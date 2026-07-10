@@ -97,6 +97,17 @@ make run-demo
 Esto ejecuta el spider demo sobre el fixture local, valida los productos extraídos con Pydantic
 y exporta el resultado a `data/exports/`.
 
+## Cómo persistir en base de datos
+
+```bash
+make init-db                                              # crea las tablas si no existen
+python -m retail_scraping_lab.cli scrape-demo --persist   # corre el demo y guarda en la DB
+```
+
+Esto guarda los productos scrapeados como `Product` (catálogo) y `ProductSnapshot` (histórico)
+en una base SQLite local (`data/processed/retail_scraping_lab.db` por defecto). Ver
+[`docs/03_data_model.md`](docs/03_data_model.md) para el detalle del modelo de datos.
+
 ## Cómo abrir el dashboard
 
 ```bash
@@ -115,7 +126,7 @@ El proyecto avanza por etapas, cada una documentada como una spec en `specs/` (v
 
 - [x] `001-project-foundation` — estructura base del repositorio.
 - [x] `002-product-scraper` — cliente HTTP, parser, validación y pipeline de export.
-- [ ] `003-data-model` — persistencia completa con SQLAlchemy.
+- [x] `003-data-model` — persistencia completa con SQLAlchemy.
 - [ ] `004-github-actions` — CI y workflow manual de scraping demo.
 - [ ] `005-dashboard` — dashboard de análisis en Streamlit.
 
@@ -130,9 +141,9 @@ El proyecto avanza por etapas, cada una documentada como una spec en `specs/` (v
 
 ## Estado actual del proyecto
 
-Etapa de fundación completada: estructura, documentación, specs, skeleton de scraping (cliente,
-parser, pipeline) y dashboard mínimo funcionando sobre datos de ejemplo. La persistencia
-completa en base de datos y el análisis histórico son el foco de las próximas etapas.
+Estructura, documentación, specs, scraping demo (cliente, parser, pipeline) y persistencia
+histórica completa con SQLAlchemy (`003-data-model`) funcionando sobre datos de ejemplo. El CI
+completo y el dashboard de análisis histórico son el foco de las próximas etapas.
 
 ## Documentación y proceso de trabajo
 

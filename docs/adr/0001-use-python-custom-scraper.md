@@ -12,7 +12,8 @@ resuelven concurrencia, colas, middlewares y exportación de forma integrada.
 
 Sin embargo, el objetivo principal del proyecto no es maximizar throughput de scraping, sino
 demostrar arquitectura clara, modelado de datos, SQL y buenas prácticas de ingeniería, de forma
-que cada capa sea fácil de explicar y de testear de forma aislada.
+que cada capa sea fácil de explicar y de testear de forma aislada, en un proyecto de portfolio
+deliberadamente pequeño.
 
 ## Decisión
 
@@ -23,7 +24,7 @@ Se construye un scraper propio, simple, basado en módulos de Python estándar d
 
 - **Scrapy**: framework maduro y potente, pero introduce su propio modelo de ejecución
   (asíncrono, basado en Twisted) y convenciones propias que dificultan mostrar una arquitectura
-  en capas explícita y fácil de razonar para fines educativos.
+  en capas explícita y fácil de razonar como caso de estudio de portfolio.
 - **Librerías de scraping "todo en uno"**: simplifican el desarrollo inicial pero ocultan
   decisiones (parsing, manejo de errores, rate limiting) que el proyecto busca justamente
   exponer y documentar.
@@ -31,7 +32,7 @@ Se construye un scraper propio, simple, basado en módulos de Python estándar d
 ## Consecuencias
 
 - Mayor control y transparencia sobre cada etapa del proceso (request, parsing, validación,
-  exportación), alineado con el objetivo educativo y de portfolio.
+  exportación), alineado con el objetivo de portfolio del proyecto.
 - Mayor responsabilidad propia sobre aspectos que un framework resolvería (concurrencia,
   reintentos, rate limiting), que se irán incorporando de forma incremental y documentada.
 - Facilita testear cada capa de forma aislada con `pytest`, sin depender de un runtime

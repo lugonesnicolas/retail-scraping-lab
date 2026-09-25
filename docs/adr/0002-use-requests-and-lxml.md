@@ -32,7 +32,7 @@ parte del stack obligatorio inicial.
   extrayendo, algo valioso para un proyecto que busca mostrar criterio técnico en la extracción
   de datos.
 - Usar XPath de forma explícita (en vez de selectores de alto nivel) obliga a razonar la
-  estructura del HTML, lo cual es parte del valor educativo del proyecto.
+  estructura del HTML, lo cual refuerza el valor del proyecto como caso de estudio de portfolio.
 
 ## Ventajas de `requests`
 

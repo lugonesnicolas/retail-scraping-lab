@@ -163,7 +163,7 @@ python3 -m venv .venv
 source .venv/bin/activate        # Windows: .venv\Scripts\activate
 make install                     # instala el paquete y las herramientas de desarrollo
 make run-demo                    # corre el pipeline completo y guarda el histórico
-make dashboard                   # abre el dashboard en http://localhost:8501
+make dashboard                   # levanta el dashboard; abrir http://localhost:8501
 ```
 
 Todos los comandos se corren desde la raíz del repositorio. La configuración tiene valores por
@@ -174,7 +174,7 @@ ejemplo, `RSL_DATABASE_URL` para usar otra base).
 |------------------|------------------------------------------------------------|-------------------------------------------|
 | `make install`   | `pip install -e ".[dev]"`                                  | Instala dependencias                      |
 | `make run-demo`  | `python -m retail_scraping_lab.cli scrape-demo --persist`  | Pipeline completo + histórico en SQLite   |
-| `make dashboard` | `streamlit run dashboard/app.py`                           | Levanta el dashboard                      |
+| `make dashboard` | `streamlit run dashboard/app.py --server.headless true`    | Levanta el dashboard                      |
 | `make check`     | `ruff check . && ruff format --check . && mypy && pytest`  | Lint, formato, tipos y tests              |
 | `make reset-db`  | `python -m retail_scraping_lab.cli init-db --reset`        | Borra y recrea la base                    |
 

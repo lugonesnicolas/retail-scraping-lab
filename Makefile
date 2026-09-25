@@ -31,5 +31,7 @@ init-db:
 reset-db:
 	python -m retail_scraping_lab.cli init-db --reset
 
+# headless: evita el prompt interactivo de Streamlit en la primera ejecucion y no abre el
+# navegador solo; la URL (http://localhost:8501) se imprime en la terminal.
 dashboard:
-	streamlit run dashboard/app.py
+	streamlit run dashboard/app.py --server.headless true

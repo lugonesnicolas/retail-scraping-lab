@@ -131,7 +131,7 @@ El proyecto avanza por etapas, cada una documentada como una spec en `specs/` (v
 - [x] `001-project-foundation` — estructura base del repositorio.
 - [x] `002-product-scraper` — cliente HTTP, parser, validación y pipeline de export.
 - [x] `003-data-model` — persistencia completa con SQLAlchemy.
-- [ ] `004-github-actions` — CI y workflow manual de scraping demo.
+- [x] `004-github-actions` — CI y workflow manual de scraping demo.
 - [x] `005-dashboard` — dashboard de análisis en Streamlit sobre la base SQLite.
 
 ## Aviso ético sobre scraping
@@ -147,8 +147,8 @@ El proyecto avanza por etapas, cada una documentada como una spec en `specs/` (v
 
 Estructura, documentación, specs, scraping demo (cliente, parser, pipeline), persistencia
 histórica completa con SQLAlchemy (`003-data-model`) y dashboard de análisis en Streamlit sobre
-la base SQLite (`005-dashboard`) funcionando sobre datos de ejemplo. El CI completo
-(`004-github-actions`) es el foco de la próxima etapa.
+la base SQLite (`005-dashboard`) funcionando sobre datos de ejemplo, con CI en GitHub Actions
+(`004-github-actions`). El foco actual es cerrar la versión `v0.1.0`.
 
 ## Documentación y proceso de trabajo
 

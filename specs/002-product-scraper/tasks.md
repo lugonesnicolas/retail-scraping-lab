@@ -10,5 +10,5 @@
 - [x] Crear fixture `tests/fixtures/demo_product_page.html`.
 - [x] Escribir `tests/unit/test_product_parser.py`.
 - [x] Escribir `tests/integration/test_scraping_pipeline.py`.
-- [ ] Ejecutar `make run-demo` y verificar que se genera un archivo en `data/exports/`.
-- [ ] Ejecutar `make test` y verificar que todos los tests pasan sin acceso a internet.
+- [x] Ejecutar `make run-demo` y verificar que se genera un archivo en `data/exports/`.
+- [x] Ejecutar `make test` y verificar que todos los tests pasan sin acceso a internet.

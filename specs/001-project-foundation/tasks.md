@@ -28,6 +28,6 @@
 - [x] Crear `README.md` orientado a portfolio.
 - [x] Crear carpetas `specs/002-product-scraper` a `specs/005-dashboard` con `spec.md`, `plan.md`
       y `tasks.md`.
-- [ ] Validar localmente: `pip install -e ".[dev]"`, `make lint`, `make typecheck`, `make test`.
-- [ ] Inicializar el repositorio Git y hacer el primer commit (fuera del alcance de esta
+- [x] Validar localmente: `pip install -e ".[dev]"`, `make lint`, `make typecheck`, `make test`.
+- [x] Inicializar el repositorio Git y hacer el primer commit (fuera del alcance de esta
       inicialización automática; a cargo del desarrollador).

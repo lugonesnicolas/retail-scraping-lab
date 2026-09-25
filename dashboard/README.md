@@ -7,16 +7,15 @@ el último export JSON/CSV. Ver `docs/03_data_model.md` para el modelo de datos 
 
 ## Cómo correrlo
 
-1. Crear la base de datos si todavía no existe: `make init-db`.
-2. Generar datos de ejemplo persistidos: `python -m retail_scraping_lab.cli scrape-demo --persist`
-   (se puede correr varias veces para acumular más de un snapshot por producto).
-3. Levantar el dashboard: `make dashboard`.
-4. Abrir la URL local que muestra Streamlit en la terminal (por defecto,
+1. Generar el histórico de ejemplo: `make run-demo` (ingiere las capturas del catálogo demo; se
+   puede correr varias veces sin duplicar datos).
+2. Levantar el dashboard: `make dashboard`.
+3. Abrir la URL local que muestra Streamlit en la terminal (por defecto,
    http://localhost:8501).
 
 Si la base de datos todavía no existe, el dashboard no rompe: muestra un aviso con los comandos
-de arriba. Si la base existe pero no tiene productos, muestra un aviso más específico sugiriendo
-correr `scrape-demo --persist`.
+para generarla. Si la base existe pero no tiene productos, muestra un aviso más específico. Si la
+base se creó con una versión anterior del esquema, recrearla con `make reset-db`.
 
 ## Configuración
 
@@ -26,15 +25,21 @@ La ruta de la base de datos se toma de `RSL_DATABASE_URL` (ver `Settings` en
 
 ## Secciones
 
+Todas las fechas están en UTC.
+
 - **Overview**: total de productos, total de snapshots, precio promedio actual (sobre el último
-  snapshot de cada producto) y disponibles vs. no disponibles.
-- **Latest products**: tabla con el último snapshot de cada producto (nombre, precio, moneda,
-  disponibilidad, fecha de scraping).
+  snapshot de cada producto) y disponibilidad en tres estados (en stock / sin stock /
+  desconocida).
+- **Latest products**: último snapshot de cada producto, con fuente, marca, precio, moneda,
+  disponibilidad, fecha de observación y URL.
+- **Price changes**: productos cuyo precio cambió entre sus dos observaciones más recientes, con
+  variación absoluta y porcentual.
 - **Price history**: selector de producto y gráfico de evolución de su precio a lo largo del
   tiempo.
-- **Scrape runs**: últimas corridas de scraping, con su estado, productos encontrados/insertados/
-  actualizados y cantidad de errores.
-- **Errors**: tabla de errores de extracción recientes, si existen.
+- **Scrape runs**: últimas corridas (una por captura), con su estado (`success`, `partial`,
+  `failed`), ítems encontrados, productos nuevos/existentes, snapshots omitidos y errores.
+- **Errors**: errores de extracción registrados (por ejemplo, un precio que no se pudo
+  interpretar).
 
 ## Limitaciones de esta versión
 

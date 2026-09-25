@@ -6,10 +6,11 @@ models/database.py. Ver docs/03_data_model.md para el diseno del modelo.
 """
 
 from collections.abc import Iterable
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import exists, select
 from sqlalchemy.orm import Session
 
 from retail_scraping_lab.models.database import (
@@ -21,6 +22,15 @@ from retail_scraping_lab.models.database import (
 )
 from retail_scraping_lab.models.product import Availability
 from retail_scraping_lab.models.product import Product as ScrapedProduct
+
+
+@dataclass(frozen=True)
+class SaveResult:
+    """Resumen de guardar una captura: productos nuevos/existentes y snapshots omitidos."""
+
+    inserted: int
+    updated: int
+    skipped: int
 
 
 def _normalize_name(name: str) -> str:
@@ -61,7 +71,10 @@ class ProductRepository:
             )
         )
         if product is not None:
+            # El catalogo guarda el ultimo valor observado; el historico vive en los snapshots.
             product.name = name
+            product.normalized_name = _normalize_name(name)
+            product.brand = brand
             product.image_url = image_url
             return product, False
 
@@ -84,7 +97,7 @@ class ProductRepository:
         product_id: int,
         price: Decimal,
         currency: str,
-        available: bool,
+        availability: Availability,
         list_price: Decimal | None = None,
         discount_percentage: Decimal | None = None,
         raw_hash: str | None = None,
@@ -97,12 +110,24 @@ class ProductRepository:
             list_price=list_price,
             discount_percentage=discount_percentage,
             currency=currency,
-            available=available,
+            availability=availability.value,
             raw_hash=raw_hash,
         )
         self._session.add(snapshot)
         self._session.flush()
         return snapshot
+
+    def snapshot_exists(self, product_id: int, scraped_at: datetime) -> bool:
+        return bool(
+            self._session.scalar(
+                select(
+                    exists().where(
+                        ProductSnapshot.product_id == product_id,
+                        ProductSnapshot.scraped_at == scraped_at,
+                    )
+                )
+            )
+        )
 
     def create_scrape_run(self, source_id: int) -> ScrapeRun:
         run = ScrapeRun(source_id=source_id, status="running")
@@ -117,6 +142,7 @@ class ProductRepository:
         products_found: int = 0,
         products_inserted: int = 0,
         products_updated: int = 0,
+        snapshots_skipped: int = 0,
         errors_count: int = 0,
     ) -> ScrapeRun:
         run = self._session.get(ScrapeRun, run_id)
@@ -128,6 +154,7 @@ class ProductRepository:
         run.products_found = products_found
         run.products_inserted = products_inserted
         run.products_updated = products_updated
+        run.snapshots_skipped = snapshots_skipped
         run.errors_count = errors_count
         self._session.flush()
         return run
@@ -142,28 +169,35 @@ class ProductRepository:
 
     def save_scraped_products(
         self, source_id: int, products: Iterable[ScrapedProduct]
-    ) -> tuple[int, int]:
-        """Guarda productos parseados (Pydantic) como Product + ProductSnapshot.
+    ) -> SaveResult:
+        """Guarda observaciones validadas (Pydantic) como Product + ProductSnapshot.
 
-        Devuelve (cantidad_insertada, cantidad_actualizada).
+        El snapshot se fecha con `captured_at` (cuando se observo el dato). Si ya
+        existe un snapshot de ese producto en esa fecha, se omite: reprocesar una
+        captura no duplica el historico.
         """
-        inserted = 0
-        updated = 0
+        inserted = updated = skipped = 0
         for scraped in products:
             product, created = self.get_or_create_product(
                 source_id=source_id,
                 product_url=str(scraped.product_url),
                 name=scraped.name,
+                brand=scraped.brand,
                 image_url=str(scraped.image_url) if scraped.image_url else None,
             )
             inserted += int(created)
             updated += int(not created)
 
+            if self.snapshot_exists(product.id, scraped.captured_at):
+                skipped += 1
+                continue
+
             self.create_product_snapshot(
                 product_id=product.id,
                 price=scraped.price,
                 currency=scraped.currency,
-                available=scraped.availability == Availability.IN_STOCK,
+                availability=scraped.availability,
+                scraped_at=scraped.captured_at,
             )
 
-        return inserted, updated
+        return SaveResult(inserted=inserted, updated=updated, skipped=skipped)

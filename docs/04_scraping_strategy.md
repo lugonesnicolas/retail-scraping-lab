@@ -72,12 +72,13 @@ de por qué se eligió `lxml` sobre `beautifulsoup4`.
 - Errores de red o HTTP (timeout, status code de error) se capturan en el cliente HTTP y se
   traducen a excepciones propias del dominio.
 - Errores de acquisition (`AcquisitionError`) o de estructura de página (`ParsingError`, cuando
-  el catálogo no tiene ninguna card de producto) interrumpen la captura: no hay nada que
-  procesar.
+  el catálogo no tiene ninguna card de producto) hacen fallar esa captura (run `failed`), sin
+  detener el procesamiento de las demás.
 - Errores de un producto individual (`NormalizationError`, por ejemplo un precio
   `"Consultar precio"`, o un fallo de validación Pydantic) no abortan la captura: el spider
   devuelve los productos válidos y una lista de errores por ítem (tipo, mensaje, URL), que el CLI
-  muestra. Su registro como `scrape_error` en la base se agrega en `007-historical-snapshots`.
+  muestra y que, con `--persist`, se guardan como `scrape_error` asociados al run de la captura
+  (que queda `partial`).
 
 ## Validaciones
 

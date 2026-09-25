@@ -9,8 +9,12 @@ diseñadas para responder las siguientes preguntas de negocio:
   `latest_snapshots`, `current_availability_breakdown`; secciones "Overview" y "Latest products".
 - ¿Cuál es el precio actual (último conocido) de cada producto? — `latest_snapshots`,
   `average_current_price`; secciones "Overview" y "Latest products".
+- ¿Cómo cambió el precio de cada producto respecto de su observación anterior? —
+  `price_changes` (window function sobre `product_snapshots`); sección "Price changes".
 - ¿Cómo evolucionan los precios de un producto a lo largo del tiempo? — `price_history`; sección
   "Price history" del dashboard.
+- ¿De qué fuente proviene cada dato y cuándo fue observado? — `latest_snapshots` (fuente, URL y
+  fecha de observación); sección "Latest products".
 - ¿Cuáles fueron las últimas corridas de scraping y qué resultado tuvieron? — `recent_scrape_runs`;
   sección "Scrape runs".
 - ¿Qué errores de extracción ocurrieron recientemente? — `recent_errors`; sección "Errors".
@@ -18,7 +22,7 @@ diseñadas para responder las siguientes preguntas de negocio:
 Preguntas que todavía no están implementadas y quedan para una etapa futura (requieren, por
 ejemplo, comparar corridas específicas o agrupar por categoría):
 
-- ¿Qué productos cambiaron de precio entre dos corridas de scraping (o en un rango de fechas)?
+- ¿Qué productos cambiaron de precio entre dos capturas arbitrarias (o en un rango de fechas)?
 - ¿Qué categorías presentan mayor variación de precio (volatilidad) en el tiempo?
 - ¿Qué productos tienen errores de extracción recurrentes, y qué tipo de error es más frecuente?
 

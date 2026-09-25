@@ -46,7 +46,7 @@ with get_session(session_factory) as session:
         st.code("python -m retail_scraping_lab.cli scrape-demo --persist")
         st.stop()
 
-    st.caption(f"Datos leidos desde: {settings.database_url}")
+    st.caption(f"Datos leidos desde: {settings.database_url}. Todas las fechas estan en UTC.")
 
     st.header("Overview")
     total_snapshots = queries.count_snapshots(session)
@@ -58,8 +58,8 @@ with get_session(session_factory) as session:
     col2.metric("Total de snapshots", total_snapshots)
     col3.metric("Precio promedio actual", f"{avg_price:.2f}" if avg_price is not None else "N/A")
     col4.metric(
-        "Disponibles / no disponibles",
-        f"{availability['in_stock']} / {availability['out_of_stock']}",
+        "En stock / sin stock / desconocida",
+        f"{availability['in_stock']} / {availability['out_of_stock']} / {availability['unknown']}",
     )
 
     st.header("Latest products")
@@ -67,16 +67,46 @@ with get_session(session_factory) as session:
     latest_df = pd.DataFrame(
         [
             {
+                "Fuente": row.source_name,
                 "Nombre": row.name,
-                "Precio": row.price,
+                "Marca": row.brand,
+                "Precio": float(row.price),
                 "Moneda": row.currency,
-                "Disponible": row.available,
-                "Scrapeado": row.scraped_at,
+                "Disponibilidad": row.availability,
+                "Observado (UTC)": row.scraped_at,
+                "URL": row.product_url,
             }
             for row in latest_rows
         ]
     )
-    st.dataframe(latest_df, width="stretch")
+    st.dataframe(
+        latest_df,
+        width="stretch",
+        hide_index=True,
+        column_config={"URL": st.column_config.LinkColumn("URL")},
+    )
+
+    st.header("Price changes")
+    st.caption("Productos cuyo precio cambio entre sus dos observaciones mas recientes.")
+    changes = queries.price_changes(session)
+    if not changes:
+        st.info("Ningun producto cambio de precio entre sus dos ultimas observaciones.")
+    else:
+        changes_df = pd.DataFrame(
+            [
+                {
+                    "Nombre": change.name,
+                    "Precio anterior": float(change.previous_price),
+                    "Precio actual": float(change.current_price),
+                    "Variacion": float(change.change),
+                    "Variacion %": round(float(change.change_pct), 2),
+                    "Observacion anterior (UTC)": change.previous_scraped_at,
+                    "Observacion actual (UTC)": change.current_scraped_at,
+                }
+                for change in changes
+            ]
+        )
+        st.dataframe(changes_df, width="stretch", hide_index=True)
 
     st.header("Price history")
     products = queries.list_products(session)
@@ -105,6 +135,7 @@ with get_session(session_factory) as session:
                 "Encontrados": run.products_found,
                 "Insertados": run.products_inserted,
                 "Actualizados": run.products_updated,
+                "Snapshots omitidos": run.snapshots_skipped,
                 "Errores": run.errors_count,
             }
             for run in runs
@@ -113,7 +144,7 @@ with get_session(session_factory) as session:
     if runs_df.empty:
         st.info("Todavia no hay corridas de scraping registradas.")
     else:
-        st.dataframe(runs_df, width="stretch")
+        st.dataframe(runs_df, width="stretch", hide_index=True)
 
     st.header("Errors")
     errors = queries.recent_errors(session)
@@ -132,4 +163,4 @@ with get_session(session_factory) as session:
                 for error in errors
             ]
         )
-        st.dataframe(errors_df, width="stretch")
+        st.dataframe(errors_df, width="stretch", hide_index=True)

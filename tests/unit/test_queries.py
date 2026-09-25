@@ -4,6 +4,7 @@ from decimal import Decimal
 from sqlalchemy.orm import Session
 
 from retail_scraping_lab.analytics import queries
+from retail_scraping_lab.models.product import Availability
 from retail_scraping_lab.repositories.product_repository import ProductRepository
 
 
@@ -26,10 +27,16 @@ def test_count_products_and_snapshots(db_session: Session) -> None:
     source = repo.get_or_create_source(name="demo-store", base_url="https://demo.test")
     product_id = _make_product(repo, source.id, "1")
     repo.create_product_snapshot(
-        product_id=product_id, price=Decimal("10.00"), currency="ARS", available=True
+        product_id=product_id,
+        price=Decimal("10.00"),
+        currency="ARS",
+        availability=Availability.IN_STOCK,
     )
     repo.create_product_snapshot(
-        product_id=product_id, price=Decimal("12.00"), currency="ARS", available=True
+        product_id=product_id,
+        price=Decimal("12.00"),
+        currency="ARS",
+        availability=Availability.IN_STOCK,
     )
 
     assert queries.count_products(db_session) == 1
@@ -47,14 +54,14 @@ def test_latest_snapshots_returns_most_recent_per_product(db_session: Session) -
         product_id=product_id,
         price=Decimal("10.00"),
         currency="ARS",
-        available=False,
+        availability=Availability.OUT_OF_STOCK,
         scraped_at=older,
     )
     repo.create_product_snapshot(
         product_id=product_id,
         price=Decimal("15.00"),
         currency="ARS",
-        available=True,
+        availability=Availability.IN_STOCK,
         scraped_at=newer,
     )
 
@@ -62,7 +69,9 @@ def test_latest_snapshots_returns_most_recent_per_product(db_session: Session) -
 
     assert len(rows) == 1
     assert rows[0].price == Decimal("15.00")
-    assert rows[0].available is True
+    assert rows[0].availability == "in_stock"
+    assert rows[0].source_name == "demo-store"
+    assert rows[0].product_url == "https://demo.test/p/1"
 
 
 def test_average_current_price_and_availability_breakdown(db_session: Session) -> None:
@@ -71,16 +80,23 @@ def test_average_current_price_and_availability_breakdown(db_session: Session) -
     product_a = _make_product(repo, source.id, "a")
     product_b = _make_product(repo, source.id, "b")
     repo.create_product_snapshot(
-        product_id=product_a, price=Decimal("10.00"), currency="ARS", available=True
+        product_id=product_a,
+        price=Decimal("10.00"),
+        currency="ARS",
+        availability=Availability.IN_STOCK,
     )
     repo.create_product_snapshot(
-        product_id=product_b, price=Decimal("20.00"), currency="ARS", available=False
+        product_id=product_b,
+        price=Decimal("20.00"),
+        currency="ARS",
+        availability=Availability.OUT_OF_STOCK,
     )
 
     assert queries.average_current_price(db_session) == Decimal("15.00")
     assert queries.current_availability_breakdown(db_session) == {
         "in_stock": 1,
         "out_of_stock": 1,
+        "unknown": 0,
     }
 
 
@@ -89,6 +105,7 @@ def test_average_current_price_none_when_no_data(db_session: Session) -> None:
     assert queries.current_availability_breakdown(db_session) == {
         "in_stock": 0,
         "out_of_stock": 0,
+        "unknown": 0,
     }
 
 
@@ -102,14 +119,14 @@ def test_price_history_orders_by_scraped_at(db_session: Session) -> None:
         product_id=product_id,
         price=Decimal("20.00"),
         currency="ARS",
-        available=True,
+        availability=Availability.IN_STOCK,
         scraped_at=now,
     )
     repo.create_product_snapshot(
         product_id=product_id,
         price=Decimal("10.00"),
         currency="ARS",
-        available=True,
+        availability=Availability.IN_STOCK,
         scraped_at=now - timedelta(days=1),
     )
 
@@ -152,3 +169,71 @@ def test_recent_errors_returns_latest_first(db_session: Session) -> None:
     errors = queries.recent_errors(db_session)
 
     assert [error.message for error in errors] == ["second", "first"]
+
+
+def _snapshot(repo: ProductRepository, product_id: int, price: str, scraped_at: datetime) -> None:
+    repo.create_product_snapshot(
+        product_id=product_id,
+        price=Decimal(price),
+        currency="ARS",
+        availability=Availability.IN_STOCK,
+        scraped_at=scraped_at,
+    )
+
+
+def test_price_changes_compares_two_most_recent_observations(db_session: Session) -> None:
+    repo = ProductRepository(db_session)
+    source = repo.get_or_create_source(name="demo-store", base_url="https://demo.test")
+    day_1, day_2, day_3 = (datetime(2026, 9, day, tzinfo=UTC) for day in (1, 8, 15))
+
+    rising = _make_product(repo, source.id, "sube")
+    _snapshot(repo, rising, "50.00", day_1)  # observacion vieja: se ignora
+    _snapshot(repo, rising, "100.00", day_2)
+    _snapshot(repo, rising, "110.00", day_3)
+
+    falling = _make_product(repo, source.id, "baja")
+    _snapshot(repo, falling, "200.00", day_2)
+    _snapshot(repo, falling, "150.00", day_3)
+
+    unchanged = _make_product(repo, source.id, "igual")
+    _snapshot(repo, unchanged, "30.00", day_2)
+    _snapshot(repo, unchanged, "30.00", day_3)
+
+    single_observation = _make_product(repo, source.id, "nuevo")
+    _snapshot(repo, single_observation, "10.00", day_3)
+
+    changes = queries.price_changes(db_session)
+
+    # Ordenado por mayor variacion porcentual absoluta: -25% antes que +10%.
+    assert [change.name for change in changes] == ["Producto baja", "Producto sube"]
+    falling_change, rising_change = changes
+    assert falling_change.previous_price == Decimal("200.00")
+    assert falling_change.current_price == Decimal("150.00")
+    assert falling_change.change == Decimal("-50.00")
+    assert falling_change.change_pct == Decimal("-25")
+    assert rising_change.previous_price == Decimal("100.00")
+    assert rising_change.change_pct == Decimal("10")
+    assert rising_change.previous_scraped_at.date() == day_2.date()
+    assert rising_change.current_scraped_at.date() == day_3.date()
+
+
+def test_price_changes_empty_without_history(db_session: Session) -> None:
+    assert queries.price_changes(db_session) == []
+
+
+def test_current_availability_breakdown_counts_unknown(db_session: Session) -> None:
+    repo = ProductRepository(db_session)
+    source = repo.get_or_create_source(name="demo-store", base_url="https://demo.test")
+    product_id = _make_product(repo, source.id, "1")
+    repo.create_product_snapshot(
+        product_id=product_id,
+        price=Decimal("10.00"),
+        currency="ARS",
+        availability=Availability.UNKNOWN,
+    )
+
+    assert queries.current_availability_breakdown(db_session) == {
+        "in_stock": 0,
+        "out_of_stock": 0,
+        "unknown": 1,
+    }

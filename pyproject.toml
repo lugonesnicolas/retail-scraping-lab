@@ -1,7 +1,7 @@
 [project]
 name = "retail-scraping-lab"
 version = "0.1.1"
-description = "Pipeline end-to-end de monitoreo de productos, precios y disponibilidad en retail: adquisicion, normalizacion, validacion, historico en SQL y dashboard."
+description = "End-to-end retail data acquisition pipeline with historical price tracking, SQL analytics and automated testing."
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "MIT" }

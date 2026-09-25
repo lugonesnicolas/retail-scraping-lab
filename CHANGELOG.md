@@ -3,6 +3,18 @@
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). Cada versión
 enlaza las specs (`specs/`) que la componen.
 
+## [Unreleased]
+
+Pulido de presentación para portfolio, sin cambios funcionales (`009-portfolio-release-polish`).
+
+### Documentación
+
+- `README.md` reescrito en inglés como engineering case study, con `v0.1.1` como versión actual.
+- Screenshot real del dashboard en `docs/assets/dashboard-overview.png`, enlazado desde el README.
+- Licencia MIT en `LICENSE`, coherente con `pyproject.toml`.
+- `pyproject.toml`: descripción del paquete en inglés, igual que la del repositorio en GitHub.
+- `docs/00_project_vision.md`: el alcance se presenta como el de `v0.1.1`.
+
 ## [0.1.1] - 2026-09-25
 
 ### Corregido

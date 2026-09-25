@@ -3,7 +3,7 @@
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). Cada versión
 enlaza las specs (`specs/`) que la componen.
 
-## [0.1.0] - Sin publicar
+## [0.1.0] - 2026-09-25
 
 Primera versión completa: un vertical slice end-to-end de monitoreo de productos, precios y
 disponibilidad, desde la adquisición hasta el dashboard.

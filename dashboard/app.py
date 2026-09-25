@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pandas as pd
 import streamlit as st
-from sqlalchemy import Engine, make_url
+from sqlalchemy import Engine, inspect, make_url
 
 from retail_scraping_lab.analytics import queries
 from retail_scraping_lab.config.settings import get_settings
@@ -20,6 +20,19 @@ def _sqlite_db_path(database_url: str) -> Path | None:
     return Path(url.database)
 
 
+def _schema_is_current(engine: Engine) -> bool:
+    """True si `product_snapshots` tiene la columna `availability`.
+
+    Sin migraciones (ver docs/03_data_model.md), una base creada con una version
+    anterior del esquema (por ejemplo, antes de 007-historical-snapshots, cuando
+    la disponibilidad era un booleano llamado `available`) no es compatible con
+    las consultas actuales. Chequea solo esta columna: es la unica senal que
+    necesitamos hoy para distinguir "esquema viejo" de "esquema actual".
+    """
+    columns = {column["name"] for column in inspect(engine).get_columns("product_snapshots")}
+    return "availability" in columns
+
+
 @st.cache_resource
 def _get_engine(database_url: str) -> Engine:
     return get_engine(database_url)
@@ -35,6 +48,18 @@ if db_path is not None and not db_path.exists():
     st.stop()
 
 engine = _get_engine(settings.database_url)
+
+if not _schema_is_current(engine):
+    st.warning(
+        "La base de datos existe, pero tiene el esquema de una version anterior del proyecto."
+    )
+    st.markdown(
+        "El proyecto no usa migraciones: hay que recrearla y volver a cargar los datos "
+        "corriendo en la terminal:"
+    )
+    st.code("make reset-db\nmake run-demo")
+    st.stop()
+
 session_factory = get_session_factory(engine)
 
 with get_session(session_factory) as session:

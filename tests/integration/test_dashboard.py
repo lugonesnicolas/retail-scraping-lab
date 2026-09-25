@@ -1,5 +1,6 @@
 """Smoke test del dashboard: corre `dashboard/app.py` sin servidor con AppTest."""
 
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -50,3 +51,24 @@ def test_dashboard_without_database_shows_instructions(
 
     assert not app.exception
     assert "No se encontro la base de datos" in app.warning[0].value
+
+
+def test_dashboard_with_outdated_schema_shows_instructions(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regresion: una base con el esquema previo a 007 (available bool) no debe
+    romper el dashboard con una excepcion de SQL, sino mostrar un aviso claro.
+    """
+    db_path = tmp_path / "outdated.db"
+    with sqlite3.connect(db_path) as connection:
+        connection.execute(
+            "CREATE TABLE product_snapshots ("
+            "id INTEGER PRIMARY KEY, product_id INTEGER, scraped_at DATETIME, "
+            "price NUMERIC, currency VARCHAR(3), available BOOLEAN)"
+        )
+
+    app = _run_app(f"sqlite:///{db_path}", monkeypatch)
+
+    assert not app.exception
+    assert "esquema de una version anterior" in app.warning[0].value
+    assert "make reset-db" in app.code[0].value

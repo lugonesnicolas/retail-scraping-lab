@@ -1,234 +1,190 @@
-# retail-scraping-lab
+# Retail Scraping Lab
 
 [![CI](https://github.com/lugonesnicolas/retail-scraping-lab/actions/workflows/ci.yml/badge.svg)](https://github.com/lugonesnicolas/retail-scraping-lab/actions/workflows/ci.yml)
 
-Pipeline end-to-end para **monitorear productos, precios y disponibilidad en retail**: adquiere
-datos de una fuente, los parsea, normaliza y valida, los guarda como histórico en SQL y los
-expone en un dashboard de análisis. Escrito en Python con `requests`, `lxml`, Pydantic,
-SQLAlchemy y Streamlit.
+**End-to-end retail data acquisition pipeline for tracking product prices, availability and
+historical changes.**
+
+It collects product data from a retail catalog, turns raw HTML into validated domain records,
+stores every observation as dated history in SQL, and exposes business-oriented analytics in a
+dashboard. Every run is traceable, reprocessing is idempotent, and one bad product never takes
+down the whole run.
 
 ```
-Retail source → Acquisition → Parsing → Normalization → Validation → Historical storage → Analytics / Dashboard
+Retail Source → Acquisition → Parsing → Normalization → Validation → Historical Storage → Analytics / Dashboard
 ```
 
-> **Estado: `v0.1.0`.** Es un vertical slice completo sobre una fuente demo local y
-> reproducible. No es un sistema productivo; ver [Estado del proyecto](#estado-del-proyecto).
+**Current release: [`v0.1.1`](CHANGELOG.md)** · Python 3.12 · requests · lxml · Pydantic ·
+SQLAlchemy · SQLite · Streamlit · pytest · GitHub Actions
+
+![Retail Scraping Lab dashboard: overview metrics, latest products and price changes](docs/assets/dashboard-overview.png)
+
+<sub>Real screenshot of the dashboard after `make run-demo`. The dashboard and CLI labels are in
+Spanish, and so are the detailed design docs, ADRs and specs.</sub>
 
 ---
 
-## Problema
+## Problem
 
-Una empresa de retail necesita monitorear periódicamente productos de fuentes externas (su propio
-catálogo o el de competidores) para responder preguntas como:
+A retail company needs to periodically collect external product data (its own catalog or a
+competitor's) to answer questions such as:
 
-- ¿Cuál es el precio actual de cada producto?
-- ¿Cómo cambió respecto de la observación anterior?
-- ¿Qué productos están disponibles?
-- ¿Cuál es el precio promedio?
-- ¿Cuándo se observó cada dato y de qué fuente proviene?
+- What is the **current price** of each product?
+- How did it **change** since the previous observation?
+- Which products are **available**, out of stock, or in an unknown state?
+- What does the **history of observations** look like for a given product?
+- **Where and when** was each data point observed (data provenance)?
 
-Un script que "scrapea y guarda un CSV" no alcanza para esto:
+The typical first attempt, a script that scrapes a page and writes a CSV, can't answer these
+reliably:
 
-- cada corrida pisa la anterior y se pierde el histórico;
-- un producto mal formado rompe toda la corrida;
-- los formatos de la fuente (`"$ 45.999,90"`, `"Sin stock"`) terminan mezclados con los datos;
-- nadie sabe qué corridas fallaron ni por qué.
+- each run overwrites the previous one, so the history is lost;
+- one malformed product crashes the entire run;
+- source-specific formats (`"$ 45.999,90"`, `"Sin stock"`) leak into the dataset;
+- nobody knows which runs failed, or why.
 
-## Solución
+## Solution
 
-Un pipeline reproducible con capas separadas y un modelo de datos histórico:
+A reproducible pipeline with explicit, separately tested stages and a historical data model:
 
-1. **Acquisition**: obtiene el contenido crudo de la fuente.
-2. **Parsing**: extrae los campos de cada producto como texto (XPath).
-3. **Normalization**: convierte ese texto a valores del dominio (`Decimal`, enums).
-4. **Validation**: valida cada producto contra un contrato Pydantic.
-5. **Historical storage**: guarda una observación fechada por producto y captura en SQLite (vía
-   SQLAlchemy). La carga es idempotente.
-6. **Analytics / Dashboard**: consultas SQL de solo lectura y un dashboard Streamlit que las
-   consume.
+1. **Acquisition**: fetch raw content from the source (local capture or HTTP).
+2. **Parsing**: extract each product's fields as raw text using XPath.
+3. **Normalization**: convert that text into domain values (`Decimal` prices, availability
+   enum, cleaned strings).
+4. **Validation**: check each record against a Pydantic contract.
+5. **Historical storage**: persist one dated observation per product and capture in SQLite through
+   SQLAlchemy, idempotently.
+6. **Analytics / Dashboard**: read-only SQL queries, consumed by a Streamlit dashboard.
 
-Cada corrida queda registrada con su estado (`success`, `partial`, `failed`) y sus errores. Un
-producto inválido se descarta y se registra, sin detener el resto.
+Each run is recorded with a status (`success`, `partial` or `failed`) and its errors. An invalid
+product is dropped and logged, and the rest of the capture is still stored.
 
-## Arquitectura
+## Architecture
 
 ```
-tests/fixtures/demo_store/<fecha>/catalog.html        fuente demo (una carpeta por captura)
+tests/fixtures/demo_store/<date>/catalog.html          demo source (one folder per capture)
         │
         ▼
-scraping/clients      LocalFileClient | HttpClient   acquisition: contenido crudo
+scraping/clients      LocalFileClient | HttpClient     acquisition: raw content
         │
         ▼
-scraping/parsers      parse_catalog (lxml + XPath)   parsing: campos de texto por producto
+scraping/parsers      parse_catalog (lxml + XPath)     parsing: raw text fields per product
         │
         ▼
-scraping/normalizers  product_normalizer             normalization: "$ 45.999,90" → Decimal
+scraping/normalizers  product_normalizer               normalization: "$ 45.999,90" → Decimal
         │
         ▼
-models/product.py     Product (Pydantic)             validation: contrato de una observación
+models/product.py     Product (Pydantic)               validation: contract of one observation
         │
-        ├──▶ scraping/pipelines   export JSON/CSV por captura
+        ├──▶ scraping/pipelines   JSON/CSV export per capture
         ▼
-repositories          ProductRepository              persistencia histórica (SQLAlchemy)
+repositories          ProductRepository                historical persistence (SQLAlchemy)
         │
         ▼
-analytics/queries.py  consultas de solo lectura  ──▶  dashboard/app.py (Streamlit)
+analytics/queries.py  read-only queries  ──▶  dashboard/app.py (Streamlit)
 ```
 
-- `services/scraping_service.py` orquesta el caso de uso: una captura, un run.
-- `cli.py` lo expone por línea de comandos (Typer).
+`services/scraping_service.py` orchestrates the use case (one capture → one run), and `cli.py`
+exposes it as a Typer CLI.
 
-La regla central es que **cada capa hace una sola cosa**:
+Each layer has a single responsibility:
 
-- el cliente no sabe de HTML;
-- el parser no convierte tipos;
-- el normalizador no hace I/O;
-- el dashboard no tiene SQL ni lógica de negocio: solo llama a `analytics/queries.py`.
+| Layer          | Module                                    | Responsibility                                                   |
+|----------------|-------------------------------------------|------------------------------------------------------------------|
+| Client         | `scraping/clients/`                       | Return raw content for a location. Knows nothing about HTML.     |
+| Parser         | `scraping/parsers/product_parser.py`      | Extract fields as text with XPath. Does not convert types.       |
+| Normalizer     | `scraping/normalizers/product_normalizer.py` | Apply source formats (es-AR prices, stock labels). No I/O.    |
+| Validation     | `models/product.py`                       | Pydantic contract for one observation.                           |
+| Repository     | `repositories/product_repository.py`      | Write catalog, snapshots, runs and errors.                       |
+| Service        | `services/scraping_service.py`            | Orchestrate a run and its transactions.                          |
+| Analytics      | `analytics/queries.py`                    | Read-only SQL queries returning typed dataclasses.               |
+| Dashboard      | `dashboard/app.py`                        | Presentation only: no SQL, no business logic.                    |
 
-Cambiar la fuente implica escribir otro cliente, parser y normalizador. El modelo, la
-persistencia y el dashboard no cambian. Detalle en
-[`docs/02_architecture.md`](docs/02_architecture.md).
+Adding a new source means writing a new client/parser/normalizer. The model, persistence and
+dashboard stay the same. More detail in [`docs/02_architecture.md`](docs/02_architecture.md).
 
-## Modelo de datos
+## Data Model
 
-El diseño separa **qué producto es** de **cómo estaba en un momento dado**:
+The schema separates **what a product is** from **what it looked like at a given moment**:
 
 ```
 sources 1──N products 1──N product_snapshots
 sources 1──N scrape_runs 1──N scrape_errors
 ```
 
-- **`products`** es el catálogo: identidad estable del producto dentro de una fuente, única por
-  `(source_id, product_url)`, con el último nombre, marca e imagen observados.
-- **`product_snapshots`** es el histórico: una fila por producto y por captura, con precio, moneda
-  y disponibilidad. Una restricción única `(product_id, scraped_at)` hace idempotente la carga.
-- **`scrape_runs`** y **`scrape_errors`** son la trazabilidad operativa de cada ejecución.
+- **`Source`**: where data comes from (for example, `demo-store`).
+- **`Product`**: the **stable catalog identity** of a product within a source, unique by
+  `(source_id, product_url)`, holding the latest observed name, brand and image.
+- **`ProductSnapshot`**: a **historical observation**, one row per product per capture, with price,
+  currency and availability. `UNIQUE(product_id, scraped_at)` makes loading idempotent.
+- **`ScrapeRun`**: one execution over one capture, with its status and counters (found, inserted,
+  updated, skipped, errors).
+- **`ScrapeError`**: an item- or run-level failure with its type, message and URL.
 
-Correspondencia entre el registro normalizado de una observación y el modelo:
+How a validated record maps to storage:
 
-| Campo del registro | Pydantic (`models/product.py`) | Persistencia                         |
-|--------------------|--------------------------------|--------------------------------------|
-| source             | `source`                       | `sources.name`                       |
-| source_url         | `product_url`                  | `products.product_url`               |
-| product_name       | `name`                         | `products.name`                      |
-| brand              | `brand`                        | `products.brand`                     |
-| price              | `price` (`Decimal`, ≥ 0)       | `product_snapshots.price`            |
-| currency           | `currency` (ISO, 3 letras)     | `product_snapshots.currency`         |
-| availability       | `availability` (enum)          | `product_snapshots.availability`     |
-| captured_at        | `captured_at`                  | `product_snapshots.scraped_at`       |
+| Pydantic field (`models/product.py`) | Stored in                          |
+|--------------------------------------|------------------------------------|
+| `source`                             | `sources.name`                     |
+| `product_url`, `name`, `brand`       | `products`                         |
+| `price` (`Decimal`, ≥ 0), `currency` (ISO 4217) | `product_snapshots`     |
+| `availability` (enum)                | `product_snapshots.availability`   |
+| `captured_at`                        | `product_snapshots.scraped_at`     |
 
-Detalle completo en [`docs/03_data_model.md`](docs/03_data_model.md).
+The schema also defines a `categories` table that the current pipeline does not populate yet. Full
+detail is in [`docs/03_data_model.md`](docs/03_data_model.md).
 
-## Decisiones de ingeniería
+## Engineering Decisions
 
-- **Scraper propio con `requests` + `lxml`, sin framework.** El objetivo es que cada etapa sea
-  explícita y testeable por separado, no maximizar el throughput.
+- **Custom pipeline on `requests` + `lxml`, no scraping framework.** Every stage stays explicit and
+  testable in isolation; throughput is not the goal.
   [ADR 0001](docs/adr/0001-use-python-custom-scraper.md) ·
   [ADR 0002](docs/adr/0002-use-requests-and-lxml.md)
-- **Acquisition como contrato (`ContentClient`).** `LocalFileClient` y `HttpClient` cumplen la
-  misma interfaz, y el spider recibe el cliente inyectado. Por eso la demo corre offline sin
-  atajos en el código.
-- **Normalizar antes de validar.** El parser entrega texto crudo; el normalizador aplica el
-  formato de la fuente (precios `es-AR`, textos de stock); Pydantic valida el contrato final.
-  Ninguna capa conoce detalles de la otra.
-- **Errores por ítem, no por página.** Un producto inválido se registra como `scrape_error` y el
-  run queda `partial`. Solo falla la captura completa si no se puede leer o si su estructura
-  cambió.
-- **`captured_at` es cuándo se observó el dato, no cuándo se cargó.** El momento de ejecución
-  queda aparte, en `scrape_runs.started_at`.
-- **Carga idempotente garantizada por la base.** La restricción única `(product_id, scraped_at)`
-  permite reprocesar una captura sin duplicar historia; los omitidos se cuentan en el run.
-- **Disponibilidad como enum de tres estados.** Guardar un booleano convertiría "desconocida" en
-  "sin stock".
-- **Transacciones separadas por run.** El run se crea antes de guardar los datos, así que una
-  falla al persistir queda registrada como `failed` con su error en lugar de perderse en el
-  rollback.
-- **SQLite + SQLAlchemy.** Cero infraestructura para quien clona el repo; pasar a PostgreSQL es
-  cambiar la URL. [ADR 0003](docs/adr/0003-use-sqlite-first.md)
-- **Streamlit sobre una capa de analytics.** Las consultas (incluida una window function para
-  la variación de precio) son funciones testeadas que devuelven dataclasses.
-  [ADR 0004](docs/adr/0004-use-streamlit-dashboard.md)
+- **Acquisition as a contract (`ContentClient`).** `LocalFileClient` and `HttpClient` implement the
+  same `Protocol`, and the spider receives the client by injection. The demo runs fully offline
+  without special-casing any code path.
+- **Normalize before validating.** The parser returns raw text, the normalizer applies the source's
+  formats (es-AR prices, stock labels), and Pydantic validates the final contract. No layer knows
+  the internals of another.
+- **Item-level error isolation.** An invalid product becomes a `scrape_error` and the run is marked
+  `partial`. A capture only fails as a whole when it can't be read or its structure changed.
+- **`captured_at` is when the data was observed, not when it was loaded.** Execution time is
+  stored separately in `scrape_runs.started_at`, so reprocessing old captures keeps the timeline
+  correct.
+- **Idempotency enforced by the database.** `UNIQUE(product_id, scraped_at)` lets a capture be
+  reprocessed without duplicating history; skipped snapshots are counted on the run.
+- **Tri-state availability (`in_stock`, `out_of_stock`, `unknown`).** A boolean would silently
+  turn "unknown" into "out of stock".
+- **Separate transactions per run.** The run is committed before its data is written. If
+  persisting the data fails, the rollback doesn't erase the evidence: the run is marked `failed`
+  with its error in a new transaction.
+- **SQLite + SQLAlchemy.** Zero infrastructure for anyone cloning the repo; the database URL is
+  configurable. [ADR 0003](docs/adr/0003-use-sqlite-first.md)
+- **Analytics layer separated from Streamlit.** Queries (including a window function for price
+  changes) are plain functions that return dataclasses and are unit-tested; the dashboard only
+  renders them. [ADR 0004](docs/adr/0004-use-streamlit-dashboard.md)
+- **CI on GitHub Actions** for every push to `main` and every PR.
+  [ADR 0005](docs/adr/0005-use-github-actions.md)
 
-Cada feature se construyó con Spec-Driven Development: `specs/NNN-feature/` contiene `spec.md`,
-`plan.md` y `tasks.md`. Ver [`docs/01_sdd_process.md`](docs/01_sdd_process.md).
-
-## Cómo correrlo localmente
-
-Requisitos: Python 3.12+, `git` y `make`.
-
-```bash
-git clone https://github.com/lugonesnicolas/retail-scraping-lab.git
-cd retail-scraping-lab
-python3 -m venv .venv
-source .venv/bin/activate        # Windows: .venv\Scripts\activate
-make install                     # instala el paquete y las herramientas de desarrollo
-make run-demo                    # corre el pipeline completo y guarda el histórico
-make dashboard                   # levanta el dashboard; abrir http://localhost:8501
-```
-
-Todos los comandos se corren desde la raíz del repositorio. La configuración tiene valores por
-defecto y no requiere ningún archivo. Para cambiarla, copiar `.env.example` a `.env` (por
-ejemplo, `RSL_DATABASE_URL` para usar otra base).
-
-| `make`           | Equivalente sin `make`                                     | Qué hace                                  |
-|------------------|------------------------------------------------------------|-------------------------------------------|
-| `make install`   | `pip install -e ".[dev]"`                                  | Instala dependencias                      |
-| `make run-demo`  | `python -m retail_scraping_lab.cli scrape-demo --persist`  | Pipeline completo + histórico en SQLite   |
-| `make dashboard` | `streamlit run dashboard/app.py --server.headless true`    | Levanta el dashboard                      |
-| `make check`     | `ruff check . && ruff format --check . && mypy && pytest`  | Lint, formato, tipos y tests              |
-| `make reset-db`  | `python -m retail_scraping_lab.cli init-db --reset`        | Borra y recrea la base                    |
-
-Otras opciones del CLI:
-
-```bash
-python -m retail_scraping_lab.cli scrape-demo --capture 2026-09-08 --persist   # una sola captura
-python -m retail_scraping_lab.cli scrape-demo                                  # solo export, sin base
-python -m retail_scraping_lab.cli --help
-```
-
-## Testing
-
-```bash
-make check
-```
-
-Corre `ruff` (lint y formato), `mypy` y la suite de `pytest`, **sin acceso a internet**. Los
-tests cubren:
-
-- **Unitarios**:
-  - parser, sobre HTML local;
-  - normalizador, con casos parametrizados de precio, disponibilidad y texto;
-  - clientes: `HttpClient` con `requests` simulado vía `monkeypatch`;
-  - repositorio, sobre SQLite en memoria;
-  - consultas analíticas.
-- **Integración**:
-  - ingesta de las tres capturas con el histórico esperado;
-  - idempotencia;
-  - run `partial` con su error persistido;
-  - regresión de la falla de persistencia;
-  - captura ilegible;
-  - CLI con `CliRunner`;
-  - smoke test del dashboard con `streamlit.testing.AppTest`.
-
-GitHub Actions corre las mismas validaciones en cada push a `main` y en cada PR
-([`ci.yml`](.github/workflows/ci.yml)). Un segundo workflow manual
-([`scrape.yml`](.github/workflows/scrape.yml)) corre el pipeline completo y publica los exports y
-la base SQLite como artefactos.
+Each feature was built with Spec-Driven Development: `specs/NNN-feature/` contains its `spec.md`,
+`plan.md` and `tasks.md`. See [`docs/01_sdd_process.md`](docs/01_sdd_process.md).
 
 ## Demo
 
-La fuente demo, `demo-store`, es un catálogo de artículos deportivos con tres capturas semanales
-en [`tests/fixtures/demo_store/`](tests/fixtures/demo_store/). Las capturas incluyen a propósito
-los casos que un pipeline real tiene que resolver:
+The demo source, `demo-store`, is a sporting-goods catalog with three weekly captures (2026-09-01,
+2026-09-08, 2026-09-15) in [`tests/fixtures/demo_store/`](tests/fixtures/demo_store/). They
+deliberately include the cases a real pipeline has to handle:
 
-- cambios de precio;
-- un producto que se agota y vuelve;
-- un producto nuevo;
-- disponibilidad "Consultar disponibilidad" (desconocida);
-- un producto sin marca;
-- un precio `"Consultar precio"` que no se puede interpretar.
+- **price changes**: some products go down, others go up;
+- **stock changes**: products go out of stock and come back;
+- **a new product** that appears in the third capture;
+- **unknown availability** (`"Consultar disponibilidad"`);
+- **a missing brand**;
+- **an invalid price** (`"Consultar precio"`) that can't be parsed.
 
-`make run-demo` produce:
+`make run-demo` processes the three captures in order. Actual output (CLI labels are in Spanish:
+*Items / Válidos / Errores / Snapshots nuevos / omitidos* = items / valid / errors / new / skipped
+snapshots):
 
 ```
                            Resumen por captura
@@ -241,89 +197,159 @@ los casos que un pipeline real tiene que resolver:
 └────────────┴─────────┴───────┴─────────┴─────────┴──────────────────┴────────────────────┘
 ```
 
-Queda un histórico de 11 productos y 30 observaciones. El producto inválido se registra como
-`NormalizationError` con su URL. Correr `make run-demo` otra vez no agrega nada: todas las
-observaciones aparecen como omitidas.
-
-Cada captura también se exporta a `data/exports/demo-store_<fecha>.json`.
+The result is a history of **11 products and 30 observations**. The unparseable price is recorded
+as a `NormalizationError` with its product URL, and the other nine products of that capture are
+still stored. Running `make run-demo` again adds nothing: every observation is reported as
+skipped. Each capture is also exported to `data/exports/demo-store_<date>.json`.
 
 ## Dashboard
 
-`make dashboard` abre una aplicación Streamlit que lee la base SQLite a través de
+`make dashboard` starts a Streamlit app that reads the SQLite database exclusively through
 `analytics/queries.py`:
 
-| Pregunta de negocio                                 | Sección           | Consulta                          |
-|-----------------------------------------------------|-------------------|-----------------------------------|
-| ¿Cuántos productos y observaciones hay?             | Overview          | `count_products`, `count_snapshots` |
-| ¿Cuál es el precio promedio actual?                 | Overview          | `average_current_price`           |
-| ¿Qué productos están disponibles?                   | Overview / Latest | `current_availability_breakdown`  |
-| ¿Cuál es el precio actual, de qué fuente y cuándo se observó? | Latest products | `latest_snapshots`          |
-| ¿Cómo cambió respecto de la observación anterior?   | Price changes     | `price_changes` (window function) |
-| ¿Cómo evolucionó el precio de un producto?          | Price history     | `price_history`                   |
-| ¿Qué corridas hubo, cómo terminaron y qué falló?    | Scrape runs / Errors | `recent_scrape_runs`, `recent_errors` |
+| View            | Business question                                              | Query                                   |
+|-----------------|----------------------------------------------------------------|-----------------------------------------|
+| Overview        | How many products and observations? Average current price? How many are in stock / out of stock / unknown? | `count_products`, `count_snapshots`, `average_current_price`, `current_availability_breakdown` |
+| Latest Products | What is each product's current price, source and observation time? | `latest_snapshots`                  |
+| Price Changes   | What changed between each product's two latest observations?  | `price_changes` (window function)       |
+| Price History   | How did one product's price evolve over time?                  | `price_history`                         |
+| Scrape Runs     | Which runs happened and how did they end?                      | `recent_scrape_runs`                    |
+| Errors          | What failed, where, and why?                                   | `recent_errors`                         |
 
-Con los datos de la demo, por ejemplo, "Price changes" muestra que las Zapatillas Trail X bajaron
-de $62.500 a $58.999 (−5,6 %) y las Medias de Compresión subieron de $7.250 a $7.650 (+5,5 %).
-Todas las fechas se muestran en UTC. Si la base todavía no existe, el dashboard muestra los
-comandos para generarla. Más detalle en [`dashboard/README.md`](dashboard/README.md).
+With the demo data, *Price Changes* shows, for example, that the Trail X running shoes dropped from
+$62,500 to $58,999 (−5.6%) and the compression socks rose from $7,250 to $7,650 (+5.5%). All
+timestamps are UTC. If the database doesn't exist yet, or was created with an older schema, the
+dashboard shows the commands to fix it instead of a traceback. More in
+[`dashboard/README.md`](dashboard/README.md).
 
-## Estado del proyecto
+## Running Locally
 
-**`v0.1.0` cumple la Definition of Done:** se puede clonar el repositorio, correr el pipeline
-completo, acumular snapshots históricos, correr los tests y ver los resultados en el dashboard
-siguiendo solo este README.
+Requirements: Python 3.12+, `git` and `make`.
 
-Lo que deliberadamente **no** es, todavía:
+```bash
+git clone https://github.com/lugonesnicolas/retail-scraping-lab.git
+cd retail-scraping-lab
+python3 -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
+make install                     # install the package and dev tools
+make run-demo                    # run the full pipeline and store the history
+make dashboard                   # start the dashboard at http://localhost:8501
+```
 
-- **No scrapea un sitio real.** La fuente es un catálogo local con capturas fechadas.
-  `HttpClient` existe y está testeado, pero ningún spider en vivo lo usa aún.
-- **No es productivo.** No hay scheduling, alertas, autenticación, migraciones de esquema
-  (Alembic) ni una base de datos servidor.
-- **Una sola fuente y una sola moneda.** El precio promedio no convierte monedas.
+Run all commands from the repository root. Configuration has sensible defaults and needs no file;
+to override it, copy `.env.example` to `.env` (for example, `RSL_DATABASE_URL` to use another
+database).
+
+| `make`           | Without `make`                                             | What it does                            |
+|------------------|------------------------------------------------------------|-----------------------------------------|
+| `make install`   | `pip install -e ".[dev]"`                                  | Install dependencies                    |
+| `make run-demo`  | `python -m retail_scraping_lab.cli scrape-demo --persist`  | Full pipeline + history in SQLite       |
+| `make dashboard` | `streamlit run dashboard/app.py --server.headless true`    | Start the dashboard                     |
+| `make check`     | `ruff check . && ruff format --check . && mypy && pytest`  | Lint, format, types and tests           |
+| `make reset-db`  | `python -m retail_scraping_lab.cli init-db --reset`        | Drop and recreate the database          |
+
+Other CLI options:
+
+```bash
+python -m retail_scraping_lab.cli scrape-demo --capture 2026-09-08 --persist   # a single capture
+python -m retail_scraping_lab.cli scrape-demo                                  # export only, no database
+python -m retail_scraping_lab.cli --help
+```
+
+## Testing and Quality
+
+```bash
+make check
+```
+
+This runs, in order:
+
+- **Ruff lint** (`ruff check .`);
+- **formatting check** (`ruff format --check .`);
+- **mypy** static type checking over `src/`, `tests/` and `dashboard/`;
+- **pytest**, 68 tests, fully offline against local fixtures:
+  - **unit**: parser on local HTML, normalizer with parametrized price/availability/text cases,
+    `HttpClient` with `requests` mocked via `monkeypatch`, repository on in-memory SQLite,
+    analytics queries;
+  - **integration**: ingesting all three captures into the expected history, idempotent
+    reprocessing, `partial` runs with persisted errors, a regression test for the persistence-failure
+    bug, unreadable captures, the CLI via `CliRunner`;
+  - **dashboard smoke test**: `dashboard/app.py` executed headlessly with
+    `streamlit.testing.AppTest`, including the "no database" and "outdated schema" states.
+
+GitHub Actions runs the same checks on every push to `main` and every pull request
+([`ci.yml`](.github/workflows/ci.yml)). A second, manually triggered workflow
+([`scrape.yml`](.github/workflows/scrape.yml)) runs the full pipeline and publishes the exports and
+the SQLite database as build artifacts.
+
+## Project Status
+
+**Current release: `v0.1.1`**, a complete vertical slice on a reproducible demo source. Following
+only this README, you can clone the repository, run the full pipeline, accumulate historical
+snapshots, run the test suite and explore the results in the dashboard. `v0.1.1` adds a fix on top
+of `v0.1.0`: the dashboard detects a database created with an older schema instead of crashing.
+See the [CHANGELOG](CHANGELOG.md).
+
+What this release deliberately does **not** attempt yet:
+
+- **Real production scraping.** The source is a local catalog with dated captures. `HttpClient`
+  exists and is tested, but no live spider uses it yet.
+- **Scheduling.** Runs are triggered manually (CLI or `workflow_dispatch`).
+- **Distributed execution.** Single process, single machine.
+- **Multiple retailers.** One source and one currency; the average price does not convert
+  currencies.
+- **PostgreSQL.** SQLite only for now; the database URL is configurable.
+- **Schema migrations.** No Alembic yet; a local database from an older version is recreated with
+  `make reset-db`.
+- **Anti-bot handling.** No headless browsers, proxies or evasion techniques, by design.
 
 ### Roadmap (v0.2+)
 
-- Una fuente HTTP real pensada para practicar scraping, con `robots.txt`, rate limiting y
-  reintentos.
-- Migraciones con Alembic y soporte de PostgreSQL.
-- Ejecución programada en GitHub Actions.
-- Análisis por categoría, variación entre capturas arbitrarias y errores recurrentes (ver
-  [`docs/05_business_questions.md`](docs/05_business_questions.md)).
+- A real HTTP source built for scraping practice, with `robots.txt` compliance, rate limiting and
+  retries.
+- Alembic migrations and PostgreSQL support.
+- Scheduled runs on GitHub Actions.
+- Category-level analysis, comparisons across arbitrary captures and recurring-error detection
+  (see [`docs/05_business_questions.md`](docs/05_business_questions.md)).
 
-## Alcance ético
+### Ethical scope
 
-- Scraping de bajo volumen, solo sobre fixtures locales o fuentes públicas pensadas para
-  practicar, respetando `robots.txt` y los términos de uso cuando el objetivo sea un sitio real.
-- No se extraen datos personales.
-- No se scrapea LinkedIn ni se automatizan publicaciones en redes sociales.
+Low-volume scraping only, against local fixtures or public sources intended for practice,
+respecting `robots.txt` and terms of use whenever the target is a real site. No personal data is
+collected. LinkedIn is never scraped and no social-media activity is automated. See
+[`docs/04_scraping_strategy.md`](docs/04_scraping_strategy.md).
 
-Detalle en [`docs/04_scraping_strategy.md`](docs/04_scraping_strategy.md).
-
-## Estructura del repositorio
+## Repository Structure
 
 ```
 src/retail_scraping_lab/
-  scraping/        clients · parsers · normalizers · spiders · pipelines
-  models/          contrato Pydantic y esquema SQLAlchemy
-  repositories/    escritura en la base
-  services/        orquestación del caso de uso (un run por captura)
-  analytics/       consultas de solo lectura
-  cli.py           comandos Typer
-dashboard/         aplicación Streamlit
-tests/             unit · integration · fixtures (catálogo demo)
-docs/              visión, arquitectura, modelo de datos, estrategia, ADRs
-specs/             una carpeta por feature (spec, plan, tasks)
+  scraping/        clients · parsers · normalizers · spiders · pipelines (export)
+  models/          Pydantic contract and SQLAlchemy schema
+  repositories/    database writes
+  services/        use-case orchestration (one run per capture)
+  analytics/       read-only queries
+  config/ core/    settings, exceptions, logging
+  cli.py           Typer commands
+dashboard/         Streamlit app
+tests/             unit · integration · fixtures (demo catalog)
+docs/              vision, architecture, data model, scraping strategy, ADRs
+specs/             one folder per feature (spec, plan, tasks)
 ```
 
-## Documentación
+## Documentation
 
-- [`docs/00_project_vision.md`](docs/00_project_vision.md): visión y alcance.
-- [`docs/01_sdd_process.md`](docs/01_sdd_process.md): proceso de Spec-Driven Development.
-- [`docs/02_architecture.md`](docs/02_architecture.md): arquitectura en capas.
-- [`docs/03_data_model.md`](docs/03_data_model.md): modelo de datos.
-- [`docs/04_scraping_strategy.md`](docs/04_scraping_strategy.md): estrategia de scraping.
-- [`docs/05_business_questions.md`](docs/05_business_questions.md): preguntas de negocio.
-- [`docs/06_ai_agents_usage.md`](docs/06_ai_agents_usage.md): uso de agentes de IA en el
-  desarrollo.
-- [`docs/adr/`](docs/adr/): decisiones de arquitectura.
-- [`CHANGELOG.md`](CHANGELOG.md): historial de versiones.
+Detailed documentation is written in Spanish.
+
+- [`docs/`](docs/): project vision, [SDD process](docs/01_sdd_process.md),
+  [architecture](docs/02_architecture.md), [data model](docs/03_data_model.md),
+  [scraping strategy](docs/04_scraping_strategy.md),
+  [business questions](docs/05_business_questions.md) and
+  [AI agents usage](docs/06_ai_agents_usage.md).
+- [`docs/adr/`](docs/adr/): Architecture Decision Records.
+- [`specs/`](specs/): Spec-Driven Development records, one folder per feature
+  (`001-project-foundation` … `009-portfolio-release-polish`).
+- [`CHANGELOG.md`](CHANGELOG.md): release history.
+
+## License
+
+[MIT](LICENSE) © Nicolas Ezequiel Lugones

@@ -3,6 +3,17 @@
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). Cada versión
 enlaza las specs (`specs/`) que la componen.
 
+## [0.1.1] - 2026-09-25
+
+### Corregido
+
+- El dashboard rompía con un `OperationalError` y un traceback de SQLAlchemy si se apuntaba a una
+  base SQLite creada antes de `007-historical-snapshots` (cuando `product_snapshots.available`
+  era un booleano en vez del `availability` actual). Como el proyecto no usa migraciones, esa
+  situación es esperable al actualizar un clone existente; ahora se detecta antes de consultar y
+  se muestra el mismo tipo de aviso que ya existía para "no existe la base" o "está vacía", con el
+  comando `make reset-db` para recrearla.
+
 ## [0.1.0] - 2026-09-25
 
 Primera versión completa: un vertical slice end-to-end de monitoreo de productos, precios y

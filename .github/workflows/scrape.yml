@@ -17,11 +17,13 @@ jobs:
       - name: Install dependencies
         run: pip install -e ".[dev]"
 
-      - name: Run demo scraper
+      - name: Run demo pipeline (ingesta + historico en SQLite)
         run: make run-demo
 
-      - name: Upload exports artifact
+      - name: Upload exports and database
         uses: actions/upload-artifact@v4
         with:
-          name: product-exports
-          path: data/exports/
+          name: demo-pipeline-output
+          path: |
+            data/exports/
+            data/processed/

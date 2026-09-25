@@ -12,7 +12,7 @@ class Settings(BaseSettings):
 
     http_timeout_seconds: float = 10.0
     http_user_agent: str = (
-        "retail-scraping-lab/0.1 (+https://github.com/<usuario>/retail-scraping-lab)"
+        "retail-scraping-lab/0.1 (+https://github.com/lugonesnicolas/retail-scraping-lab)"
     )
 
     database_url: str = "sqlite:///./data/processed/retail_scraping_lab.db"

@@ -36,3 +36,10 @@ Se usa GitHub Actions con dos workflows:
 - A futuro, `scrape.yml` podría extenderse para correr contra fuentes reales de forma programada
   (`schedule`), lo cual se evaluará y documentará cuando el proyecto llegue a esa etapa,
   respetando siempre las restricciones éticas descritas en `README.md` y `AGENTS.md`.
+
+## Actualización (v0.1.0)
+
+- `ci.yml` también verifica el formato del código (`ruff format --check`).
+- `scrape.yml` corre el pipeline completo con persistencia (`make run-demo`: ingesta de todas las
+  capturas del catálogo demo e histórico en SQLite) y publica los exports JSON y la base SQLite
+  resultante como un único artefacto (`demo-pipeline-output`).

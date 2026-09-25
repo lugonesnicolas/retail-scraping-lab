@@ -2,28 +2,26 @@
 
 ## Visión
 
-`retail-scraping-lab` es un laboratorio educativo y profesional para practicar y demostrar
-scraping aplicado a inteligencia de productos y precios en retail. El proyecto simula, de forma
-controlada y ética, el tipo de sistema que una empresa de e-commerce o retail usaría para
-monitorear precios y disponibilidad de productos propios o de la competencia.
+`retail-scraping-lab` es un sistema pequeño y completo de monitoreo de productos, precios y
+disponibilidad en retail. Implementa el tipo de pipeline que un equipo de e-commerce o de pricing
+usaría para seguir su propio catálogo o el de la competencia:
 
-No busca ser "otro scraper" suelto: busca ser un sistema pequeño pero completo, con una
-arquitectura clara, un modelo de datos pensado para responder preguntas de negocio, tests,
-CI/CD y un dashboard de análisis.
+```
+fuente → acquisition → parsing → normalization → validation → histórico en SQL → analytics
+```
 
-## Objetivo de portfolio
+No busca ser "otro scraper": el valor está en lo que rodea a la extracción. Eso incluye capas
+separadas y testeables, un modelo de datos histórico pensado para preguntas de negocio, una carga
+idempotente con trazabilidad de cada corrida, tests automatizados, CI y un dashboard de análisis.
 
-El proyecto está pensado para:
+## Objetivo del repositorio
 
-- Servir como repositorio público de portfolio en GitHub, mostrando código profesional,
-  documentado y testeado.
-- Documentar el proceso de construcción en LinkedIn, mostrando no solo el resultado sino el
-  razonamiento detrás de las decisiones técnicas (Spec-Driven Development, ADRs, uso de
-  agentes de IA).
-- Servir como evidencia concreta de habilidades de Python avanzado, SQL, modelado de datos,
-  administración de proyectos y uso profesional de herramientas de IA, en el marco de la
-  Tecnicatura en Desarrollo de Software y la búsqueda de roles como Data Engineer / Backend
-  Developer.
+- Servir como engineering case study público: mostrar código documentado y testeado, junto con
+  el razonamiento detrás de cada decisión (specs en `specs/`, ADRs en `docs/adr/`).
+- Evidenciar habilidades de Python, data engineering, adquisición de datos, ETL, SQL/SQLAlchemy,
+  validación de datos, modelado histórico, testing y CI.
+- Mantenerse deliberadamente pequeño y demostrable. La arquitectura reutilizable para muchos
+  scrapers a escala es el objetivo de otro proyecto (`ndevscrap`), no de este.
 
 ## Valor para el negocio
 
@@ -31,42 +29,47 @@ Un sistema de este tipo, llevado a producción, permitiría a un equipo de negoc
 
 - Detectar cambios de precio en productos propios o de competidores.
 - Monitorear disponibilidad de stock.
-- Identificar categorías con mayor variación de precios.
+- Saber de qué fuente proviene cada dato y cuándo fue observado.
 - Detectar errores de extracción que indiquen cambios en la estructura de un sitio.
 - Analizar la evolución histórica de precios para tomar decisiones de pricing.
 
-Ver `docs/05_business_questions.md` para el detalle de las preguntas de negocio que el proyecto
-busca responder.
+Ver `docs/05_business_questions.md` para las preguntas concretas que responde hoy y las que
+quedan para versiones futuras.
 
 ## Valor técnico
 
-El proyecto demuestra:
-
-- Diseño de una arquitectura en capas (cliente HTTP, parser, validación, pipeline, repositorio,
-  servicios, analytics, dashboard).
-- Modelado de datos relacional pensado para análisis histórico (snapshots, no solo estado actual).
-- Uso de SQL y SQLAlchemy para persistencia y consultas analíticas.
-- Buenas prácticas de ingeniería: tipado estático, linting, tests automatizados, CI/CD.
+- Arquitectura en capas con contratos explícitos: acquisition (`ContentClient`), parsing,
+  normalización, validación (Pydantic), repositorio, servicios, analytics y dashboard.
+- Modelo relacional histórico (catálogo + snapshots) con carga idempotente garantizada por una
+  restricción única, y trazabilidad de corridas y errores.
+- Consultas SQL analíticas con SQLAlchemy, incluida una window function para la variación de
+  precio.
+- Tipado estático, linting, tests unitarios y de integración sin red, y CI en GitHub Actions.
 - Un flujo de trabajo guiado por especificaciones (SDD), documentado en
-  `docs/01_sdd_process.md`.
-- Uso crítico y documentado de agentes de IA como aceleradores de desarrollo, no como caja negra.
+  `docs/01_sdd_process.md`, con uso documentado de agentes de IA (`docs/06_ai_agents_usage.md`).
 
-## Alcance inicial
+## Alcance de `v0.1.0`
 
-- Un scraper "demo" que trabaja sobre un fixture HTML local (no un sitio real todavía).
-- Cliente HTTP con `requests`, parser con `lxml`, validación con Pydantic.
-- Pipeline de exportación a JSON/CSV.
-- Base del modelo de datos con SQLAlchemy (sin persistencia completa todavía).
-- Dashboard mínimo en Streamlit que lee un archivo de ejemplo.
-- CI básica (lint, typecheck, tests) y un workflow manual de scraping demo.
+- Una fuente de datos: el catálogo demo `demo-store`, con tres capturas fechadas en
+  `tests/fixtures/demo_store/`, leído a través de la capa de acquisition. Es offline y
+  reproducible.
+- Ingesta completa: parsing con `lxml`/XPath, normalización de precios y disponibilidad,
+  validación con Pydantic y errores por ítem que no abortan la captura.
+- Persistencia histórica en SQLite vía SQLAlchemy, con un run por captura (`success`, `partial`,
+  `failed`).
+- CLI (`scrape-demo`, `init-db`) y Makefile (`install`, `run-demo`, `dashboard`, `check`).
+- Dashboard Streamlit sobre la capa de analytics.
+- CI (lint, formato, tipos, tests) y un workflow manual que corre el pipeline y publica sus
+  resultados.
 
 ## Fuera de alcance (por ahora)
 
-- Scraping de sitios reales de retail a gran escala.
+- Scraping de sitios reales, múltiples retailers o scraping masivo.
+- Navegadores headless (Playwright), proxies, rotación de IPs o técnicas anti-bot.
+- Orquestadores, colas o infraestructura distribuida (Airflow, Kafka, Redis, Kubernetes).
+- Base de datos servidor, migraciones de esquema, despliegue del dashboard y autenticación.
+- Alertas automáticas o integraciones con sistemas externos.
 - Scraping o automatización de cualquier tipo sobre LinkedIn u otras redes sociales.
-- Persistencia completa en base de datos productiva y despliegue del dashboard en un servidor.
-- Sistemas de proxies, rotación de IPs o técnicas de evasión de bloqueos.
-- Alertas automáticas, notificaciones o integraciones con sistemas externos.
 
-Estas capacidades podrán incorporarse en etapas futuras, cada una con su propia spec en
-`specs/`, siguiendo el proceso descrito en `docs/01_sdd_process.md`.
+Las capacidades que tengan sentido para este proyecto se incorporarán en versiones futuras, cada
+una con su propia spec en `specs/` (ver el roadmap en `README.md`).

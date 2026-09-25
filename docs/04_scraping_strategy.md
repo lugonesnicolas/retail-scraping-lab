@@ -2,11 +2,17 @@
 
 ## Estrategia inicial: fixture / demo
 
-La primera etapa del proyecto trabaja exclusivamente contra un fixture HTML local
-(`tests/fixtures/demo_product_page.html`) y, opcionalmente, contra un sitio de demostración
-público pensado para practicar scraping. El objetivo es validar la arquitectura (cliente →
-parser → validación → pipeline) sin depender de la disponibilidad ni de las condiciones de uso
-de un sitio real.
+La fuente de datos actual es un catálogo demo local, "demo-store"
+(`tests/fixtures/demo_store/`), con una carpeta por captura fechada
+(`<YYYY-MM-DD>/catalog.html`). Las capturas incluyen, a propósito, cambios de precio, productos
+que se agotan, un producto nuevo, disponibilidad desconocida, un producto sin marca y un ítem
+con precio inválido, para ejercitar todo el flujo (acquisition → parsing → normalization →
+validation) de forma reproducible y sin depender de la disponibilidad ni de las condiciones de
+uso de un sitio real.
+
+El catálogo se lee con `LocalFileClient`, que cumple el mismo contrato (`ContentClient`) que
+`HttpClient`. Apuntar a una fuente HTTP real implica cambiar el cliente y escribir el parser y
+el normalizador de esa fuente; el resto del flujo no cambia.
 
 ## Futura adaptación a sitios reales
 
@@ -65,13 +71,17 @@ de por qué se eligió `lxml` sobre `beautifulsoup4`.
 
 - Errores de red o HTTP (timeout, status code de error) se capturan en el cliente HTTP y se
   traducen a excepciones propias del dominio.
-- Errores de parsing (campo faltante, estructura inesperada) se capturan en el parser y se
-  registran como `scrape_error` (ver `docs/03_data_model.md`) en vez de interrumpir toda la
-  corrida.
-- El objetivo es que un error en un producto individual no aborte el scraping de los demás.
+- Errores de acquisition (`AcquisitionError`) o de estructura de página (`ParsingError`, cuando
+  el catálogo no tiene ninguna card de producto) interrumpen la captura: no hay nada que
+  procesar.
+- Errores de un producto individual (`NormalizationError`, por ejemplo un precio
+  `"Consultar precio"`, o un fallo de validación Pydantic) no abortan la captura: el spider
+  devuelve los productos válidos y una lista de errores por ítem (tipo, mensaje, URL), que el CLI
+  muestra. Su registro como `scrape_error` en la base se agrega en `007-historical-snapshots`.
 
 ## Validaciones
 
-- Todo producto parseado pasa por validación con Pydantic (`models/product.py`) antes de entrar
-  al pipeline. Un producto que no cumple el esquema (por ejemplo, precio no numérico) se
-  descarta y se registra como error, no se persiste con datos inconsistentes.
+- Todo producto parseado pasa por normalización (`scraping/normalizers/`) y luego por validación
+  con Pydantic (`models/product.py`) antes de exportarse o persistirse. Un producto que no cumple
+  el esquema se descarta y se reporta como error por ítem; nunca se persiste con datos
+  inconsistentes.

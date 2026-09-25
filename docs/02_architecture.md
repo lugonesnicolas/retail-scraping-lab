@@ -6,10 +6,12 @@ El proyecto está organizado en capas con responsabilidades bien separadas, toda
 `src/retail_scraping_lab/`:
 
 ```
-scraping.clients   -> obtiene HTML/XML crudo desde una fuente (HTTP o fixture local)
-scraping.parsers   -> convierte HTML crudo en datos estructurados (dicts) usando lxml
-models             -> valida y tipa esos datos estructurados con Pydantic; define el esquema SQLAlchemy
-scraping.pipelines -> orquesta parser + validación y exporta/persiste los productos
+scraping.clients     -> acquisition: obtiene contenido crudo (HTTP o archivo local), sin interpretarlo
+scraping.parsers     -> parsing: convierte HTML crudo en campos de texto (dicts) usando lxml/XPath
+scraping.normalizers -> normalization: convierte esos textos a valores del dominio (Decimal, enums)
+models               -> validation: contrato Pydantic de un producto; define el esquema SQLAlchemy
+scraping.spiders     -> combina las capas anteriores para una fuente concreta, producto por producto
+scraping.pipelines   -> exporta productos ya validados (JSON/CSV)
 repositories       -> encapsula el acceso a la base de datos (SQLAlchemy)
 services           -> coordina spiders, pipelines y repositorios para un caso de uso completo
 analytics          -> consultas de negocio sobre los datos ya persistidos
@@ -19,14 +21,22 @@ dashboard/         -> aplicación Streamlit que lee datos exportados/persistidos
 
 ## Responsabilidad de cada carpeta
 
-- **`scraping/clients/`**: solo sabe cómo hacer una request HTTP (con `requests`) y devolver el
-  contenido crudo. No sabe nada de HTML ni de productos.
-- **`scraping/parsers/`**: solo sabe cómo tomar HTML crudo y extraer campos específicos con
-  `lxml` (XPath). No sabe hacer requests ni valida tipos de datos.
-- **`scraping/spiders/`**: combina un cliente y un parser para una fuente concreta (por ejemplo,
-  `demo_store_spider.py`), produciendo una lista de productos parseados (dicts).
-- **`models/`**: define `Product` (Pydantic) como esquema de validación de un producto parseado,
-  y `database.py` como base de SQLAlchemy para la futura persistencia.
+- **`scraping/clients/`**: capa de acquisition. Define el contrato `ContentClient`
+  (`get(location) -> str`), implementado por `HttpClient` (`requests`) y por `LocalFileClient`
+  (archivos locales, usado por la fuente demo). Solo devuelve contenido crudo: no sabe nada de
+  HTML ni de productos, y reporta sus fallas como `AcquisitionError`.
+- **`scraping/parsers/`**: solo sabe cómo tomar HTML crudo y extraer campos de texto con `lxml`
+  (XPath). No hace requests, no convierte tipos y no decide qué campos son obligatorios; un
+  campo ausente queda en `None`.
+- **`scraping/normalizers/`**: funciones puras que llevan los textos del parser a valores del
+  dominio (precio en formato `es-AR` a `Decimal`, texto de disponibilidad a `Availability`,
+  limpieza de espacios). Un valor que no se puede interpretar lanza `NormalizationError`.
+- **`scraping/spiders/`**: combina cliente, parser, normalizador y validación para una fuente
+  concreta (por ejemplo, `demo_store_spider.py`). Recibe el cliente inyectado y procesa cada
+  producto de forma independiente: un ítem inválido se reporta como error sin descartar el resto.
+- **`models/`**: define `Product` (Pydantic) como contrato de una observación de producto ya
+  normalizada (fuente, fecha de captura, nombre, marca, precio, moneda, disponibilidad, URLs), y
+  `database.py` con el esquema de persistencia de SQLAlchemy.
 - **`scraping/pipelines/`**: recibe productos ya validados y los exporta (JSON/CSV) o los envía
   a un repositorio. No sabe scrapear ni parsear.
 - **`repositories/`**: encapsula el acceso a la base de datos. Es la única capa que debería
@@ -44,30 +54,33 @@ dashboard/         -> aplicación Streamlit que lee datos exportados/persistidos
 ## Flujo de datos
 
 ```
-Fixture HTML / sitio demo
+Catálogo demo (tests/fixtures/demo_store/<fecha>/catalog.html)
         |
         v
- scraping.clients.http_client   (obtiene HTML crudo)
+ scraping.clients (LocalFileClient | HttpClient)   acquisition: contenido crudo
         |
         v
- scraping.parsers.product_parser (HTML -> dict con campos crudos)
+ scraping.parsers.product_parser                    parsing: HTML -> campos de texto por producto
         |
         v
- models.product.Product          (dict -> Product validado con Pydantic)
+ scraping.normalizers.product_normalizer            normalization: texto -> Decimal / enums
         |
         v
- scraping.pipelines.product_pipeline (lista de Product -> JSON/CSV, y en el futuro -> repositorio)
+ models.product.Product                             validation: contrato Pydantic
+        |
+        +--> scraping.pipelines.product_pipeline     export JSON/CSV
         |
         v
- repositories.product_repository  (persistencia en SQLAlchemy, base a futuro)
+ repositories.product_repository                    persistencia histórica (SQLAlchemy/SQLite)
         |
         v
- analytics.queries / dashboard/app.py  (lectura y visualización)
+ analytics.queries -> dashboard/app.py               lectura y visualización
 ```
 
 ## Por qué se separan cliente, parser, pipeline, repositorio y dashboard
 
-- **Testabilidad**: el parser se puede testear con un fixture HTML local, sin red. El pipeline se
+- **Testabilidad**: el parser se puede testear con un fixture HTML local, sin red; el
+  normalizador, como funciones puras con casos parametrizados. El pipeline se
   puede testear con productos ya parseados, sin HTML. El dashboard se puede probar con datos de
   ejemplo, sin scraper.
 - **Reemplazabilidad**: si en el futuro se scrapea un sitio real distinto, solo cambia el spider

@@ -1,3 +1,4 @@
+from datetime import datetime
 from decimal import Decimal
 from enum import StrEnum
 
@@ -11,13 +12,17 @@ class Availability(StrEnum):
 
 
 class Product(BaseModel):
-    """Producto parseado y validado, listo para exportar o persistir.
+    """Observacion normalizada y validada de un producto, lista para exportar o persistir.
 
-    Ver docs/03_data_model.md para el modelo de datos completo (esta clase valida
-    un snapshot de producto, no el esquema de persistencia).
+    Es el contrato de datos entre la ingesta (parser + normalizador) y el resto
+    del sistema. Ver docs/03_data_model.md para el esquema de persistencia (esta
+    clase valida una observacion, no define tablas).
     """
 
+    source: str = Field(min_length=1)
+    captured_at: datetime
     name: str = Field(min_length=1)
+    brand: str | None = None
     price: Decimal = Field(ge=0)
     currency: str = Field(min_length=3, max_length=3)
     availability: Availability

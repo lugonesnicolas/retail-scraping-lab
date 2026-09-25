@@ -1,9 +1,18 @@
 from collections.abc import Iterator
+from pathlib import Path
 
 import pytest
 from sqlalchemy.orm import Session
 
 from retail_scraping_lab.models.database import get_engine, get_session_factory, init_db
+
+DEMO_CATALOG_DIR = Path(__file__).parent / "fixtures" / "demo_store"
+
+
+@pytest.fixture
+def demo_catalog_dir() -> Path:
+    """Catalogo demo local: una carpeta `<YYYY-MM-DD>/catalog.html` por captura."""
+    return DEMO_CATALOG_DIR
 
 
 @pytest.fixture

@@ -49,8 +49,8 @@ permite explicar, paso a paso, por qué el proyecto está construido como está.
 ## Arquitectura (resumen)
 
 ```
-cliente HTTP (requests) -> parser (lxml/XPath) -> validación (Pydantic)
-    -> pipeline (export JSON/CSV) -> repositorio (SQLAlchemy) -> analytics/dashboard
+acquisition (LocalFileClient | HttpClient) -> parser (lxml/XPath) -> normalización
+    -> validación (Pydantic) -> export JSON/CSV + repositorio (SQLAlchemy) -> analytics/dashboard
 ```
 
 Cada capa tiene una responsabilidad única y es testeable de forma aislada. El detalle completo
@@ -78,8 +78,8 @@ cp .env.example .env
 make test
 ```
 
-Los tests no dependen de acceso a internet: usan el fixture local
-`tests/fixtures/demo_product_page.html`.
+Los tests no dependen de acceso a internet: usan el catálogo demo local
+`tests/fixtures/demo_store/`.
 
 También se puede lintear y chequear tipos:
 
@@ -94,8 +94,9 @@ make typecheck
 make run-demo
 ```
 
-Esto ejecuta el spider demo sobre el fixture local, valida los productos extraídos con Pydantic
-y exporta el resultado a `data/exports/`.
+Esto procesa la captura más reciente del catálogo demo local (`tests/fixtures/demo_store/`):
+obtiene el HTML, extrae y normaliza cada producto, lo valida con Pydantic y exporta el resultado
+a `data/exports/`. Con `--capture YYYY-MM-DD` se procesa una captura específica.
 
 ## Cómo persistir en base de datos
 

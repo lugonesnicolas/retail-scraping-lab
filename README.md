@@ -111,12 +111,16 @@ en una base SQLite local (`data/processed/retail_scraping_lab.db` por defecto). 
 ## Cómo abrir el dashboard
 
 ```bash
-make run-demo   # si todavía no generaste datos de ejemplo
+make init-db                                              # si todavía no existe la base
+python -m retail_scraping_lab.cli scrape-demo --persist   # si todavía no hay datos persistidos
 make dashboard
 ```
 
-El dashboard (Streamlit) lee el export más reciente de `data/exports/` y muestra cantidad de
-productos, precio promedio, disponibilidad y una tabla de productos. Más detalle en
+El dashboard (Streamlit) lee directamente de la base SQLite (no del export JSON/CSV) usando
+`analytics/queries.py`, y muestra métricas históricas reales: cantidad de productos y snapshots,
+precio promedio actual, disponibilidad, último precio por producto, evolución de precio por
+producto, últimas corridas de scraping y errores recientes. Si la base no existe todavía, muestra
+un aviso con las instrucciones para generarla. Más detalle en
 [`dashboard/README.md`](dashboard/README.md).
 
 ## Roadmap
@@ -127,8 +131,8 @@ El proyecto avanza por etapas, cada una documentada como una spec en `specs/` (v
 - [x] `001-project-foundation` — estructura base del repositorio.
 - [x] `002-product-scraper` — cliente HTTP, parser, validación y pipeline de export.
 - [x] `003-data-model` — persistencia completa con SQLAlchemy.
-- [ ] `004-github-actions` — CI y workflow manual de scraping demo.
-- [ ] `005-dashboard` — dashboard de análisis en Streamlit.
+- [x] `004-github-actions` — CI y workflow manual de scraping demo.
+- [x] `005-dashboard` — dashboard de análisis en Streamlit sobre la base SQLite.
 
 ## Aviso ético sobre scraping
 
@@ -141,9 +145,10 @@ El proyecto avanza por etapas, cada una documentada como una spec en `specs/` (v
 
 ## Estado actual del proyecto
 
-Estructura, documentación, specs, scraping demo (cliente, parser, pipeline) y persistencia
-histórica completa con SQLAlchemy (`003-data-model`) funcionando sobre datos de ejemplo. El CI
-completo y el dashboard de análisis histórico son el foco de las próximas etapas.
+Estructura, documentación, specs, scraping demo (cliente, parser, pipeline), persistencia
+histórica completa con SQLAlchemy (`003-data-model`) y dashboard de análisis en Streamlit sobre
+la base SQLite (`005-dashboard`) funcionando sobre datos de ejemplo, con CI en GitHub Actions
+(`004-github-actions`). El foco actual es cerrar la versión `v0.1.0`.
 
 ## Documentación y proceso de trabajo
 

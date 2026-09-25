@@ -22,6 +22,7 @@ from retail_scraping_lab.models.database import (
     ScrapeRun,
     Source,
 )
+from retail_scraping_lab.models.product import Availability
 
 
 @dataclass(frozen=True)
@@ -34,13 +35,16 @@ class ProductOption:
 
 @dataclass(frozen=True)
 class LatestProductRow:
-    """Ultimo snapshot conocido de un producto."""
+    """Ultimo snapshot conocido de un producto, con su fuente y datos de catalogo."""
 
     product_id: int
+    source_name: str
     name: str
+    brand: str | None
+    product_url: str
     price: Decimal
     currency: str
-    available: bool
+    availability: str
     scraped_at: datetime
 
 
@@ -50,6 +54,29 @@ class PricePoint:
 
     scraped_at: datetime
     price: Decimal
+
+
+@dataclass(frozen=True)
+class PriceChangeRow:
+    """Variacion de precio de un producto entre sus dos observaciones mas recientes."""
+
+    product_id: int
+    name: str
+    previous_price: Decimal
+    current_price: Decimal
+    previous_scraped_at: datetime
+    current_scraped_at: datetime
+
+    @property
+    def change(self) -> Decimal:
+        return self.current_price - self.previous_price
+
+    @property
+    def change_pct(self) -> Decimal:
+        """Variacion porcentual respecto del precio anterior (0 si el anterior era 0)."""
+        if self.previous_price == 0:
+            return Decimal("0")
+        return self.change / self.previous_price * 100
 
 
 @dataclass(frozen=True)
@@ -64,6 +91,7 @@ class ScrapeRunRow:
     products_found: int
     products_inserted: int
     products_updated: int
+    snapshots_skipped: int
     errors_count: int
 
 
@@ -114,8 +142,10 @@ def latest_snapshots(session: Session) -> list[LatestProductRow]:
     )
     snapshot = aliased(ProductSnapshot)
 
+    # La restriccion unica (product_id, scraped_at) garantiza una sola fila por producto.
     stmt = (
-        select(Product.id, Product.name, snapshot)
+        select(Product, Source.name, snapshot)
+        .join(Source, Source.id == Product.source_id)
         .join(latest_ids, latest_ids.c.product_id == Product.id)
         .join(
             snapshot,
@@ -127,14 +157,17 @@ def latest_snapshots(session: Session) -> list[LatestProductRow]:
 
     return [
         LatestProductRow(
-            product_id=product_id,
-            name=name,
+            product_id=product.id,
+            source_name=source_name,
+            name=product.name,
+            brand=product.brand,
+            product_url=product.product_url,
             price=snap.price,
             currency=snap.currency,
-            available=snap.available,
+            availability=snap.availability,
             scraped_at=snap.scraped_at,
         )
-        for product_id, name, snap in session.execute(stmt).all()
+        for product, source_name, snap in session.execute(stmt).all()
     ]
 
 
@@ -148,10 +181,14 @@ def average_current_price(session: Session) -> Decimal | None:
 
 
 def current_availability_breakdown(session: Session) -> dict[str, int]:
-    """Cantidad de productos disponibles vs. no disponibles, segun el ultimo snapshot."""
-    rows = latest_snapshots(session)
-    available = sum(1 for row in rows if row.available)
-    return {"in_stock": available, "out_of_stock": len(rows) - available}
+    """Cantidad de productos por estado de disponibilidad, segun el ultimo snapshot.
+
+    Siempre incluye los tres estados (en 0 si no hay productos en alguno).
+    """
+    counts = {status.value: 0 for status in Availability}
+    for row in latest_snapshots(session):
+        counts[row.availability] += 1
+    return counts
 
 
 def price_history(session: Session, product_id: int) -> list[PricePoint]:
@@ -165,6 +202,61 @@ def price_history(session: Session, product_id: int) -> list[PricePoint]:
         PricePoint(scraped_at=scraped_at, price=price)
         for scraped_at, price in session.execute(stmt)
     ]
+
+
+def price_changes(session: Session) -> list[PriceChangeRow]:
+    """Productos cuyo precio cambio entre sus dos observaciones mas recientes.
+
+    Numera los snapshots de cada producto del mas nuevo al mas viejo con una
+    window function (`row_number() OVER (PARTITION BY product_id ORDER BY
+    scraped_at DESC)`) y joinea la observacion 1 (actual) con la 2 (anterior).
+    Productos con una sola observacion no aparecen. Ordena por mayor
+    variacion porcentual absoluta.
+    """
+    ranked = select(
+        ProductSnapshot.product_id,
+        ProductSnapshot.price,
+        ProductSnapshot.scraped_at,
+        func.row_number()
+        .over(partition_by=ProductSnapshot.product_id, order_by=ProductSnapshot.scraped_at.desc())
+        .label("recency"),
+    )
+    current = ranked.subquery("current")
+    previous = ranked.subquery("previous")
+
+    stmt = (
+        select(
+            Product.id,
+            Product.name,
+            previous.c.price,
+            current.c.price,
+            previous.c.scraped_at,
+            current.c.scraped_at,
+        )
+        .join(current, (current.c.product_id == Product.id) & (current.c.recency == 1))
+        .join(previous, (previous.c.product_id == Product.id) & (previous.c.recency == 2))
+        .where(current.c.price != previous.c.price)
+    )
+
+    rows = [
+        PriceChangeRow(
+            product_id=product_id,
+            name=name,
+            previous_price=previous_price,
+            current_price=current_price,
+            previous_scraped_at=previous_scraped_at,
+            current_scraped_at=current_scraped_at,
+        )
+        for (
+            product_id,
+            name,
+            previous_price,
+            current_price,
+            previous_scraped_at,
+            current_scraped_at,
+        ) in session.execute(stmt).all()
+    ]
+    return sorted(rows, key=lambda row: abs(row.change_pct), reverse=True)
 
 
 def recent_scrape_runs(session: Session, limit: int = 10) -> list[ScrapeRunRow]:
@@ -185,6 +277,7 @@ def recent_scrape_runs(session: Session, limit: int = 10) -> list[ScrapeRunRow]:
             products_found=run.products_found,
             products_inserted=run.products_inserted,
             products_updated=run.products_updated,
+            snapshots_skipped=run.snapshots_skipped,
             errors_count=run.errors_count,
         )
         for run, source_name in session.execute(stmt).all()

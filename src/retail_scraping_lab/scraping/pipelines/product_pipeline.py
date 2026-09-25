@@ -10,16 +10,22 @@ ExportFormat = Literal["json", "csv"]
 
 
 def export_products(
-    products: list[Product], output_dir: Path, export_format: ExportFormat = "json"
+    products: list[Product],
+    output_dir: Path,
+    export_format: ExportFormat = "json",
+    *,
+    filename_stem: str | None = None,
 ) -> Path:
     """Exporta una lista de productos validados a JSON o CSV en output_dir.
 
     Devuelve la ruta del archivo generado. No hace scraping ni parsing: recibe
-    productos ya validados por models.product.Product.
+    productos ya validados por models.product.Product. Sin `filename_stem`, el
+    nombre lleva el timestamp de la exportacion; con un stem fijo, volver a
+    exportar sobrescribe el mismo archivo.
     """
     output_dir.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    output_path = output_dir / f"products_{timestamp}.{export_format}"
+    stem = filename_stem or f"products_{datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ')}"
+    output_path = output_dir / f"{stem}.{export_format}"
 
     if export_format == "json":
         payload = [product.model_dump(mode="json") for product in products]

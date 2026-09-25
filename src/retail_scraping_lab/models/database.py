@@ -16,7 +16,6 @@ from sqlalchemy import (
     DateTime,
     Engine,
     ForeignKey,
-    Index,
     Numeric,
     String,
     Text,
@@ -106,11 +105,19 @@ class Product(Base):
 
 
 class ProductSnapshot(Base):
-    """Estado de un producto en un momento dado (un registro por scrape exitoso)."""
+    """Estado de un producto en un momento dado (una observacion por captura).
+
+    `scraped_at` es el momento en que se observo el dato en la fuente (la fecha
+    de la captura), no el de la carga. La restriccion unica sobre
+    `(product_id, scraped_at)` hace idempotente reprocesar una captura, y su
+    indice implicito sirve a las consultas historicas por producto.
+    """
 
     __tablename__ = "product_snapshots"
     __table_args__ = (
-        Index("ix_product_snapshots_product_id_scraped_at", "product_id", "scraped_at"),
+        UniqueConstraint(
+            "product_id", "scraped_at", name="uq_product_snapshots_product_scraped_at"
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -120,7 +127,8 @@ class ProductSnapshot(Base):
     list_price: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
     discount_percentage: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))
     currency: Mapped[str] = mapped_column(String(3))
-    available: Mapped[bool]
+    # Valor de models.product.Availability ("in_stock", "out_of_stock", "unknown").
+    availability: Mapped[str] = mapped_column(String(20))
     raw_hash: Mapped[str | None] = mapped_column(String(64))
 
     product: Mapped[Product] = relationship(back_populates="snapshots")
@@ -139,6 +147,7 @@ class ScrapeRun(Base):
     products_found: Mapped[int] = mapped_column(default=0)
     products_inserted: Mapped[int] = mapped_column(default=0)
     products_updated: Mapped[int] = mapped_column(default=0)
+    snapshots_skipped: Mapped[int] = mapped_column(default=0)
     errors_count: Mapped[int] = mapped_column(default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
 
@@ -181,6 +190,16 @@ def init_db(engine: Engine) -> None:
     if engine.url.drivername.startswith("sqlite") and database_path and database_path != ":memory:":
         Path(database_path).parent.mkdir(parents=True, exist_ok=True)
     Base.metadata.create_all(engine)
+
+
+def reset_db(engine: Engine) -> None:
+    """Borra y recrea todas las tablas. Destruye los datos existentes.
+
+    Sin migraciones, es la forma de adoptar un cambio de esquema en una base
+    local (ver docs/03_data_model.md).
+    """
+    Base.metadata.drop_all(engine)
+    init_db(engine)
 
 
 @contextmanager

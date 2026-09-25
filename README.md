@@ -78,7 +78,7 @@ cp .env.example .env
 make test
 ```
 
-Los tests no dependen de acceso a internet: usan el catálogo demo local
+`make check` corre lint (incluido el chequeo de formato), typecheck y tests juntos. Los tests no dependen de acceso a internet: usan el catálogo demo local
 `tests/fixtures/demo_store/`.
 
 También se puede lintear y chequear tipos:
@@ -94,35 +94,37 @@ make typecheck
 make run-demo
 ```
 
-Esto procesa la captura más reciente del catálogo demo local (`tests/fixtures/demo_store/`):
-obtiene el HTML, extrae y normaliza cada producto, lo valida con Pydantic y exporta el resultado
-a `data/exports/`. Con `--capture YYYY-MM-DD` se procesa una captura específica.
+Esto ingiere, en orden cronológico, las tres capturas del catálogo demo local
+(`tests/fixtures/demo_store/`): obtiene cada HTML, extrae y normaliza cada producto, lo valida con
+Pydantic, exporta cada captura a `data/exports/` y guarda el histórico en SQLite
+(`data/processed/retail_scraping_lab.db` por defecto) como `Product` (catálogo) y
+`ProductSnapshot` (una observación por producto y captura). Al final muestra un resumen por
+captura: una de ellas termina `partial` a propósito, porque incluye un producto con precio
+inválido que se descarta y queda registrado como error.
 
-## Cómo persistir en base de datos
+Correrlo de nuevo es seguro: la carga es idempotente y no duplica snapshots. Otras variantes:
 
 ```bash
-make init-db                                              # crea las tablas si no existen
-python -m retail_scraping_lab.cli scrape-demo --persist   # corre el demo y guarda en la DB
+python -m retail_scraping_lab.cli scrape-demo --capture 2026-09-08 --persist  # una captura
+python -m retail_scraping_lab.cli scrape-demo                                 # solo export JSON
+make reset-db   # borra y recrea la base (necesario si venís de una versión anterior del esquema)
 ```
 
-Esto guarda los productos scrapeados como `Product` (catálogo) y `ProductSnapshot` (histórico)
-en una base SQLite local (`data/processed/retail_scraping_lab.db` por defecto). Ver
-[`docs/03_data_model.md`](docs/03_data_model.md) para el detalle del modelo de datos.
+Ver [`docs/03_data_model.md`](docs/03_data_model.md) para el detalle del modelo de datos.
 
 ## Cómo abrir el dashboard
 
 ```bash
-make init-db                                              # si todavía no existe la base
-python -m retail_scraping_lab.cli scrape-demo --persist   # si todavía no hay datos persistidos
+make run-demo    # si todavía no hay datos persistidos
 make dashboard
 ```
 
-El dashboard (Streamlit) lee directamente de la base SQLite (no del export JSON/CSV) usando
-`analytics/queries.py`, y muestra métricas históricas reales: cantidad de productos y snapshots,
-precio promedio actual, disponibilidad, último precio por producto, evolución de precio por
-producto, últimas corridas de scraping y errores recientes. Si la base no existe todavía, muestra
-un aviso con las instrucciones para generarla. Más detalle en
-[`dashboard/README.md`](dashboard/README.md).
+El dashboard (Streamlit) lee directamente de la base SQLite usando `analytics/queries.py`, y
+muestra: cantidad de productos y snapshots, precio promedio actual, disponibilidad en tres
+estados, último precio por producto (con fuente, marca, URL y fecha de observación), variación de
+precio respecto de la observación anterior, evolución de precio por producto, corridas de
+scraping y errores. Si la base no existe todavía, muestra un aviso con las instrucciones para
+generarla. Más detalle en [`dashboard/README.md`](dashboard/README.md).
 
 ## Roadmap
 

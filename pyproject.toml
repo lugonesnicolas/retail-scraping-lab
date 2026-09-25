@@ -1,7 +1,7 @@
 [project]
 name = "retail-scraping-lab"
 version = "0.1.0"
-description = "Laboratorio educativo y profesional de scraping aplicado a inteligencia de productos/precios."
+description = "Pipeline end-to-end de monitoreo de productos, precios y disponibilidad en retail: adquisicion, normalizacion, validacion, historico en SQL y dashboard."
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "MIT" }
@@ -15,7 +15,8 @@ dependencies = [
     "sqlalchemy>=2.0",
     "typer>=0.12",
     "rich>=13.7",
-    "streamlit>=1.35",
+    # >=1.49: el dashboard usa st.dataframe(width="stretch").
+    "streamlit>=1.49",
     "pandas>=2.2",
 ]
 

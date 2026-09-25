@@ -5,15 +5,15 @@ Las reglas generales para cualquier agente de IA están en [AGENTS.md](AGENTS.md
 
 ## Contexto del proyecto
 
-`retail-scraping-lab` es un laboratorio educativo y de portfolio, no un producto comercial.
-El objetivo es que el código sea claro, testeable y fácil de explicar en una entrevista o en un
-post de LinkedIn, no que resuelva el máximo de casos posibles. Ver `docs/00_project_vision.md`.
+`retail-scraping-lab` es un proyecto de portfolio, no un producto comercial. El objetivo es que
+el código sea claro, testeable y fácil de explicar en una entrevista o en un post de LinkedIn, no
+que resuelva el máximo de casos posibles. Ver `docs/00_project_vision.md`.
 
 ## Reglas de arquitectura
 
-- Respetar la separación de capas descrita en `docs/02_architecture.md`: cliente HTTP → parser →
-  validación (Pydantic) → pipeline → repositorio → analytics/dashboard. No mezclar
-  responsabilidades entre capas (por ejemplo, no parsear HTML dentro del cliente HTTP).
+- Respetar la separación de capas descrita en `docs/02_architecture.md`: acquisition (clientes) →
+  parsing → normalization → validación (Pydantic) → pipeline → repositorio → analytics/dashboard.
+  No mezclar responsabilidades entre capas (por ejemplo, no parsear HTML dentro del cliente).
 - Usar `requests` para todas las peticiones HTTP. No agregar `httpx`.
 - Usar `lxml` para todo el parsing de HTML/XML. No agregar `beautifulsoup4`.
 - No agregar dependencias nuevas sin justificarlas explícitamente (en el mensaje de commit/PR o
@@ -33,8 +33,8 @@ post de LinkedIn, no que resuelva el máximo de casos posibles. Ver `docs/00_pro
   arquitectura, el modelo de datos o el stack.
 - Generar tests para toda lógica nueva no trivial (parsers, pipelines, servicios). Los tests no
   deben depender de acceso a internet; usar fixtures locales en `tests/fixtures/`.
-- Mantener el foco educativo y de portfolio: preferir código legible y bien comentado donde el
-  "por qué" no sea obvio, por sobre trucos u optimizaciones prematuras.
+- Mantener el foco de portfolio: preferir código legible y bien comentado donde el "por qué" no
+  sea obvio, por sobre trucos u optimizaciones prematuras.
 
 ## Alcance ético
 

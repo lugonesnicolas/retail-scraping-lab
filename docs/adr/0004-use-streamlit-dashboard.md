@@ -34,3 +34,10 @@ CSV/JSON exportado por el pipeline (y, a futuro, desde la base de datos vía `an
   stack del proyecto.
 - Si el proyecto evoluciona hacia una aplicación con más usuarios o necesidades de personalización
   de UI avanzada, se evaluará una arquitectura backend/frontend separada en un ADR futuro.
+
+## Actualización (v0.1.0)
+
+La lectura de CSV/JSON fue la primera iteración. Desde `005-dashboard`, el dashboard lee la base
+SQLite exclusivamente a través de `analytics/queries.py`: funciones de solo lectura que devuelven
+dataclasses y se testean de forma aislada. El dashboard no contiene SQL ni lógica de negocio, solo
+presentación. La decisión de usar Streamlit se mantiene.

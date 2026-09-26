@@ -14,7 +14,7 @@ down the whole run.
 Retail Source → Acquisition → Parsing → Normalization → Validation → Historical Storage → Analytics / Dashboard
 ```
 
-**Current release: [`v0.1.1`](CHANGELOG.md)** · Python 3.12 · requests · lxml · Pydantic ·
+**Current release: [`v0.1.2`](CHANGELOG.md)** · Python 3.12 · requests · lxml · Pydantic ·
 SQLAlchemy · SQLite · Streamlit · pytest · GitHub Actions
 
 ![Retail Scraping Lab dashboard: overview metrics, latest products and price changes](docs/assets/dashboard-overview.png)
@@ -127,7 +127,7 @@ How a validated record maps to storage:
 |--------------------------------------|------------------------------------|
 | `source`                             | `sources.name`                     |
 | `product_url`, `name`, `brand`       | `products`                         |
-| `price` (`Decimal`, ≥ 0), `currency` (ISO 4217) | `product_snapshots`     |
+| `price` (`Decimal`, ≥ 0), `currency` (3-letter currency code) | `product_snapshots`     |
 | `availability` (enum)                | `product_snapshots.availability`   |
 | `captured_at`                        | `product_snapshots.scraped_at`     |
 
@@ -284,11 +284,12 @@ the SQLite database as build artifacts.
 
 ## Project Status
 
-**Current release: `v0.1.1`**, a complete vertical slice on a reproducible demo source. Following
+**Current release: `v0.1.2`**, a complete vertical slice on a reproducible demo source. Following
 only this README, you can clone the repository, run the full pipeline, accumulate historical
-snapshots, run the test suite and explore the results in the dashboard. `v0.1.1` adds a fix on top
-of `v0.1.0`: the dashboard detects a database created with an older schema instead of crashing.
-See the [CHANGELOG](CHANGELOG.md).
+snapshots, run the test suite and explore the results in the dashboard. `v0.1.1` added a fix on
+top of `v0.1.0` (the dashboard now detects a database created with an older schema instead of
+crashing); `v0.1.2` polishes the documentation and portfolio presentation, with no functional
+changes. See the [CHANGELOG](CHANGELOG.md).
 
 What this release deliberately does **not** attempt yet:
 

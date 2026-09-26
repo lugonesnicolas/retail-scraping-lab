@@ -48,7 +48,7 @@ quedan para versiones futuras.
 - Un flujo de trabajo guiado por especificaciones (SDD), documentado en
   `docs/01_sdd_process.md`, con uso documentado de agentes de IA (`docs/06_ai_agents_usage.md`).
 
-## Alcance actual (`v0.1.1`)
+## Alcance actual (`v0.1.2`)
 
 - Una fuente de datos: el catálogo demo `demo-store`, con tres capturas fechadas en
   `tests/fixtures/demo_store/`, leído a través de la capa de acquisition. Es offline y

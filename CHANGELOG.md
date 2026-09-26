@@ -5,6 +5,8 @@ enlaza las specs (`specs/`) que la componen.
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-09-26
+
 Pulido de presentación para portfolio, sin cambios funcionales (`009-portfolio-release-polish`).
 
 ### Documentación
